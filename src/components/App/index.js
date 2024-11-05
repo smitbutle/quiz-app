@@ -7,6 +7,7 @@ import Quiz from '../Quiz';
 import Result from '../Result';
 
 import { shuffle } from '../../utils';
+import Register from '../FaceAuth/Register';
 
 const App = () => {
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,7 @@ const App = () => {
   const [countdownTime, setCountdownTime] = useState(null);
   const [isQuizStarted, setIsQuizStarted] = useState(false);
   const [isQuizCompleted, setIsQuizCompleted] = useState(false);
+  const [isFaceRegistered, setIsFaceRegistered] = useState(false);
   const [resultData, setResultData] = useState(null);
 
   const startQuiz = (data, countdownTime) => {
@@ -86,11 +88,22 @@ const App = () => {
     }, 1000);
   };
 
+
+  const authenticateFace = () => {
+    setIsFaceRegistered(true);
+  }
+
   return (
     <Layout>
       {loading && <Loader {...loadingMessage} />}
       {!loading && !isQuizStarted && !isQuizCompleted && (
-        <Main startQuiz={startQuiz} />
+        <>
+        {!isFaceRegistered ? (
+          <Register authenticateFace={authenticateFace} />
+        ) : (
+          <Main startQuiz={startQuiz} />
+        )}
+        </>
       )}
       {!loading && isQuizStarted && (
         <Quiz data={data} countdownTime={countdownTime} endQuiz={endQuiz} />
