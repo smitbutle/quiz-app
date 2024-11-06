@@ -42,11 +42,11 @@ const Register = (props) => {
     loadModels();
   }, []);
 
-
-  let isBlinking = false;
-
+  
   // Monitor the video stream for liveness detection and calibration
   useEffect(() => {
+  
+    let isBlinking = false;
     let interval;
     if (videoRef) {
       interval = setInterval(async () => {
@@ -123,7 +123,7 @@ const Register = (props) => {
           embedding: userEmbedding,
         });
         alert("Registration successful!");
-        props.authenticateFace();
+        props.authenticateFace(userEmbedding);
       }
     } catch (error) {
       if (error.response && error.response.status === 400) {
