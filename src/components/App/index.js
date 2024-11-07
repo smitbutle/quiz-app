@@ -117,6 +117,7 @@ const App = () => {
       setIsQuizCompleted(false);
       setResultData(null);
       setLoading(false);
+      startVideo();
     }, 1000);
   };
 
@@ -136,6 +137,7 @@ const App = () => {
       setIsQuizCompleted(false);
       setResultData(null);
       setLoading(false);
+      startVideo();
     }, 1000);
   };
 
@@ -148,8 +150,7 @@ const App = () => {
 
   useEffect(() => {
     let interval;
-    if (videoRef) {
-      // interval2 = setInterval(async () => {}, 500);
+    if (videoRef && !loading) {
       interval = setInterval(async () => {
         const video = document.getElementById("videoInput");
 
@@ -187,7 +188,7 @@ const App = () => {
     }
     return () => clearInterval(interval);
 
-  }, [videoRef]);
+  }, [videoRef, loading]);
 
 
 

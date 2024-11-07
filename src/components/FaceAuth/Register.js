@@ -16,10 +16,9 @@ const Register = ({authenticateFace, startVideo, videoRef}) => {
   const [blinkCount, setBlinkCount] = useState(0);
 
   useEffect(() => {
-  
     let isBlinking = false;
     let interval;
-    if (videoRef) {
+    if (videoRef && !loading) {
       interval = setInterval(async () => {
         const video = document.getElementById("videoInput");
 
@@ -66,7 +65,7 @@ const Register = ({authenticateFace, startVideo, videoRef}) => {
       }, 200);
     }
     return () => clearInterval(interval);
-  }, [videoRef]);
+  }, [loading, videoRef]);
 
   // Handle registration process
   const handleRegister = async () => {
@@ -115,7 +114,7 @@ const Register = ({authenticateFace, startVideo, videoRef}) => {
               onChange={(e) => setUsername(e.target.value)}
               sx={{ marginTop: 2, marginBottom: 2 }}
             />
-            <Button variant="contained" fullWidth onClick={()=>startVideo()} sx={{ marginBottom: 2 }}>
+            <Button variant="contained" fullWidth onClick={()=>{startVideo()}} sx={{ marginBottom: 2 }}>
               Start Video
             </Button>
             <div style={{ position: "relative" }}>
