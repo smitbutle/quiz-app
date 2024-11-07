@@ -5,9 +5,8 @@ import Loader from '../Loader';
 import Main from '../Main';
 import Quiz from '../Quiz';
 import Result from '../Result';
-
+import axios from 'axios';
 import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 
 import { shuffle } from '../../utils';
 import Register from '../FaceAuth/Register';
@@ -23,6 +22,8 @@ const App = () => {
   const [resultData, setResultData] = useState(null);
   const [videoRef, setVideoRef] = useState(null);
   const [faceDetected, setFaceDetected] = useState(false);
+  const [username, setUsername] = useState("");
+  const [attempt_id, setAttemptId] = useState("");
 
   // const [livenessDetected, setLivenessDetected] = useState(false);
   useEffect(() => {
@@ -61,16 +62,56 @@ const App = () => {
     setVideoRef(null);
   };
 
+  async function startTest(username, testName) {
+    try {
+      const response = await axios.post('http://localhost:5000/starttest', {
+        username,
+        test_name: testName
+      });
+      console.log(response.data);
+      // Output: { message: 'Test started successfully', test_id: <generated_test_id> }
+      setAttemptId(response.data.test_id);
 
+    } catch (error) {
+      console.error(error.response ? error.response.data : error.message);
+    }
+  }
 
+  async function submitAttempt(username, testId, embeddingsArray) {
+    try {
+      const response = await axios.post('http://localhost:5000/submitattempt', {
+        username,
+        test_id: testId,
+        embeddingsArray
+      });
+      console.log(response.data); // Output: { success: true, results: [{ embedding: ..., score: ... }, ...] }
+    } catch (error) {
+      console.error(error.response ? error.response.data : error.message);
+    }
+  }
+
+  const [reportData, setReportData] = useState(null);
+
+async function getReport(username, testId) {
+  try {
+    const response = await axios.post('http://localhost:5000/getreport', {
+      username,
+      test_id: testId
+    });
+    setReportData(response.data);
+    
+  } catch (error) {
+    console.error(error.response ? error.response.data : error.message);
+  }
+}
   const startQuiz = (data, countdownTime) => {
     setLoading(true);
     setLoadingMessage({
       title: 'Loading your quiz...',
       message: "It won't be long!",
     });
+    startTest(username, "Math Exam");
     setCountdownTime(countdownTime);
-
     setTimeout(() => {
       setData(data);
       setIsQuizStarted(true);
@@ -82,7 +123,7 @@ const App = () => {
 
     stopVideo();
     setLoading(true);
-
+    getReport(username, attempt_id);
     setLoadingMessage({
       title: 'Fetching your results...',
       message: 'Just a moment!',
@@ -141,14 +182,20 @@ const App = () => {
     }, 1000);
   };
 
+
+
+  
+
   const authenticateFace = async () => {
     setIsFaceRegistered(true);
-    // startVideo();
   }
+  
 
 
+  const embeddingsPacketArray = [];
 
   useEffect(() => {
+
     let interval;
     if (videoRef && !loading) {
       interval = setInterval(async () => {
@@ -156,34 +203,23 @@ const App = () => {
 
         const detections = await faceapi
           .detectSingleFace(video)
-          .withFaceLandmarks();
+          .withFaceLandmarks().withFaceDescriptor();
 
         if (detections) {
           setFaceDetected(true);
-          const leftEye = detections.landmarks.getLeftEye();
-          const rightEye = detections.landmarks.getRightEye();
-
-          // Simple blink detection based on eye landmarks
-          const eyeAspectRatio = (eye) => {
-            const width = Math.hypot(
-              eye[3].x - eye[0].x,
-              eye[3].y - eye[0].y
-            );
-            const height =
-              Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y) +
-              Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
-            return width / (height / 2);
-          };
-
-          const leftEAR = eyeAspectRatio(leftEye);
-          const rightEAR = eyeAspectRatio(rightEye);
-
-          console.log(leftEAR, rightEAR);
+          embeddingsPacketArray.push(detections.descriptor);
+          console.log(detections.descriptor);
+          
+          if (embeddingsPacketArray.length === 5) {
+            submitAttempt(username, attempt_id, embeddingsPacketArray);
+            
+            embeddingsPacketArray.length = 0;
+          }
 
         } else {
           setFaceDetected(false);
         }
-
+        
       }, 2000);
     }
     return () => clearInterval(interval);
@@ -199,7 +235,7 @@ const App = () => {
 
       {/* Display Register component if not loading and not registered */}
       {!loading && !isQuizStarted && !isQuizCompleted && !isFaceRegistered && (
-        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef}/>
+        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef} username={username} setUsername={setUsername}/>
       )}
 
       {/* Display main quiz content if face is registered */}
@@ -271,7 +307,7 @@ const App = () => {
 
       {/* Display Result component if quiz is completed */}
       {!loading && isQuizCompleted && (
-        <Result {...resultData} replayQuiz={replayQuiz} resetQuiz={resetQuiz} />
+        <Result {...resultData} replayQuiz={replayQuiz} resetQuiz={resetQuiz} reportData={reportData}/>
       )}
     </Layout>
 

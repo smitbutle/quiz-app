@@ -10,8 +10,7 @@ import {
 } from "@mui/material";
 import axios from "axios";
 
-const Register = ({authenticateFace, startVideo, videoRef}) => {
-  const [username, setUsername] = useState("");
+const Register = ({authenticateFace, startVideo, videoRef, username, setUsername}) => {
   const [loading, setLoading] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
 
@@ -79,21 +78,14 @@ const Register = ({authenticateFace, startVideo, videoRef}) => {
 
       if (detections) {
         const userEmbedding = detections.descriptor;
-        // setEmbedding(userEmbedding);
         await axios.post("http://localhost:5000/register", {
           username,
           embedding: userEmbedding,
         });
-        alert("Registration successful!");
         authenticateFace(userEmbedding);
       }
     } catch (error) {
-      if (error.response && error.response.status === 400) {
-        alert("User has already registered.");
-      } else {
-        console.error("Error during registration:", error);
-        alert("Registration failed. Please try again.");
-      }
+      console.error(error.response ? error.response.data : error.message);
     } finally {
       setLoading(false);
     }

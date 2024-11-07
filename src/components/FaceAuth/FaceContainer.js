@@ -46,21 +46,3 @@ const createEmbeddingsPacket = async () => {
     }
 };
 
-
-// while (isFaceRegistered && !loading && isQuizStarted && !isQuizCompleted) {
-//     setInterval(createEmbeddingsPacket, 2000);
-// }
-
-
-const FaceContainer = () => {
-
-
-
-
-    
-
-
-    return (
-        
-    );
-}

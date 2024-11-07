@@ -4,6 +4,7 @@ import { Container, Menu } from 'semantic-ui-react';
 
 import Stats from './Stats';
 import QNA from './QNA';
+import ReportCard from './ReportCard';
 
 const Result = ({
   totalQuestions,
@@ -12,6 +13,7 @@ const Result = ({
   questionsAndAnswers,
   replayQuiz,
   resetQuiz,
+  reportData,
 }) => {
   const [activeTab, setActiveTab] = useState('Stats');
 
@@ -21,7 +23,7 @@ const Result = ({
 
   return (
     <Container>
-      <Menu fluid widths={2}>
+      <Menu fluid widths={3}>
         <Menu.Item
           name="Stats"
           active={activeTab === 'Stats'}
@@ -30,6 +32,11 @@ const Result = ({
         <Menu.Item
           name="QNA"
           active={activeTab === 'QNA'}
+          onClick={handleTabClick}
+        />
+        <Menu.Item
+          name="Report"
+          active={activeTab === 'Report'}
           onClick={handleTabClick}
         />
       </Menu>
@@ -43,6 +50,9 @@ const Result = ({
         />
       )}
       {activeTab === 'QNA' && <QNA questionsAndAnswers={questionsAndAnswers} />}
+      {activeTab === 'Report' && 
+      <ReportCard report={reportData}/>
+      }
       <br />
     </Container>
   );
