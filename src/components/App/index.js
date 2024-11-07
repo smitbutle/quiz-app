@@ -25,12 +25,43 @@ const App = () => {
   const [faceDetected, setFaceDetected] = useState(false);
 
   // const [livenessDetected, setLivenessDetected] = useState(false);
+  useEffect(() => {
+    const loadModels = async () => {
+      setLoading(true)
+      const MODEL_URL = process.env.PUBLIC_URL + '/models'
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+      setLoading(false)
+    };
+    loadModels();
+  }, []);
 
   const startVideo = () => {
     navigator.mediaDevices.getUserMedia({ video: {} }).then((stream) => {
       setVideoRef(stream);
+      console.log('video started', stream.id);
     });
   };
+
+  const stopVideo = () => {
+    console.log('stopping video');
+    if (videoRef) {
+
+      videoRef.getTracks().forEach((track) => {
+        try {
+          console.log(`Track ID: ${track.id}, Kind: ${track.kind}, Ready State: ${track.readyState}`);
+          track.stop();
+          console.log(`After stopping, Ready State: ${track.readyState}`);
+        }
+        catch (e) { console.log(e) }
+        });
+    };
+
+    setVideoRef(null);
+  };
+
+
 
   const startQuiz = (data, countdownTime) => {
     setLoading(true);
@@ -48,13 +79,17 @@ const App = () => {
   };
 
   const endQuiz = resultData => {
+
+    stopVideo();
     setLoading(true);
+
     setLoadingMessage({
       title: 'Fetching your results...',
       message: 'Just a moment!',
     });
 
     setTimeout(() => {
+
       setIsQuizStarted(false);
       setIsQuizCompleted(true);
       setResultData(resultData);
@@ -63,6 +98,7 @@ const App = () => {
   };
 
   const replayQuiz = () => {
+
     setLoading(true);
     setLoadingMessage({
       title: 'Getting ready for round two.',
@@ -86,10 +122,12 @@ const App = () => {
 
   const resetQuiz = () => {
     setLoading(true);
+
     setLoadingMessage({
       title: 'Loading the home screen.',
       message: 'Thank you for playing!',
     });
+
 
     setTimeout(() => {
       setData(null);
@@ -103,7 +141,7 @@ const App = () => {
 
   const authenticateFace = async () => {
     setIsFaceRegistered(true);
-    startVideo();
+    // startVideo();
   }
 
 
@@ -141,11 +179,6 @@ const App = () => {
 
           console.log(leftEAR, rightEAR);
 
-          // if (leftEAR > EAR_THRESHOLD && rightEAR > EAR_THRESHOLD) {
-          //   // setLivenessDetected(true);
-          //   console.log("eyes closed");
-          // } else {
-          // }
         } else {
           setFaceDetected(false);
         }
@@ -153,6 +186,7 @@ const App = () => {
       }, 2000);
     }
     return () => clearInterval(interval);
+
   }, [videoRef]);
 
 
@@ -164,7 +198,7 @@ const App = () => {
 
       {/* Display Register component if not loading and not registered */}
       {!loading && !isQuizStarted && !isQuizCompleted && !isFaceRegistered && (
-        <Register authenticateFace={authenticateFace} />
+        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef}/>
       )}
 
       {/* Display main quiz content if face is registered */}
@@ -173,12 +207,13 @@ const App = () => {
           sx={{
             display: "flex",
             flexDirection: "row",
-            height: "100vh", // Full viewport height
+            // height: "100vh", // Full viewport height
+            width: "100vw", // Full viewport width
             padding: 3,
           }}
         >
           {/* Left section for main content */}
-          <Box sx={{ flex: 1, marginRight: 3 }}>
+          <Box sx={{ flex: 1, marginRight: 3, width: "80%" }}>
             {!loading && !isQuizStarted && !isQuizCompleted && (
               <Main startQuiz={startQuiz} />
             )}
@@ -187,53 +222,49 @@ const App = () => {
             )}
           </Box>
 
-          {/* Right section for the camera feed */}
-          <Box
-            sx={{
-              width: 480, // Fixed width for the camera feed section
-              minWidth: 320,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-            }}
-          >
-            <Card
+          {!isQuizCompleted && !loading && (
+            <Box
               sx={{
-                width: "100%",
-                borderRadius: 2,
-                boxShadow: 3,
-                overflow: "hidden",
+                width: "20%", 
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
               }}
             >
-              <CardContent>
-                <Box sx={{ position: "relative", width: "100%", height: 240 }}>
-                  <video
-                    id="videoInput"
-                    width="100%"
-                    height="100%"
-                    autoPlay
-                    style={{ borderRadius: 8, objectFit: "cover" }}
-                    ref={(ref) =>
-                      ref && ref.srcObject !== videoRef
-                        ? (ref.srcObject = videoRef)
-                        : null
-                    }
-                  />
-                </Box>
+              <Card
+                sx={{
+                  width: "100%",
+                  borderRadius: 2,
+                  boxShadow: 3,
+                  overflow: "hidden",
+                }}
+              >
+                <CardContent>
+                  <Box sx={{ position: "relative", width: "100%" }}>
+                    <video
+                      id="videoInput"
+                      width="100%"
+                      autoPlay
+                      style={{ borderRadius: 8, objectFit: "cover" }}
+                      ref={(ref) =>
+                        (ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null)}
+                    />
+                  </Box>
 
-                {/* Display detection status */}
-                {!faceDetected ? (
-                  <Typography variant="h7" color="error">
-                    Face not detected, this incident will be reported.
-                  </Typography>
-                ) : (
-                  <Typography variant="h6" gutterBottom color="success">
-                    Face detected.
-                  </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Box>
+                  {/* Display detection status */}
+                  {!faceDetected ? (
+                    <Typography variant="h7" color="error">
+                      Face not detected, this incident will be reported.
+                    </Typography>
+                  ) : (
+                    <Typography variant="h6" gutterBottom color="success">
+                      Face detected.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+          )}
         </Box>
       )}
 

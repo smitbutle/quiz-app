@@ -10,40 +10,11 @@ import {
 } from "@mui/material";
 import axios from "axios";
 
-const Register = (props) => {
+const Register = ({authenticateFace, startVideo, videoRef}) => {
   const [username, setUsername] = useState("");
-  const [embedding, setEmbedding] = useState(null);
-  const [videoRef, setVideoRef] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [livenessDetected, setLivenessDetected] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
-  const [EAR_THRESHOLD, setEARThreshold] = useState(null);
-  const isCalibratingRef = useRef(true);
-  const calibrationData = useRef([]);
-  const calibrationStartTimeRef = useRef(Date.now());
-  const CALIBRATION_DURATION = 3000; // 3 seconds calibration time
 
-  // One-time loading of face-api.js models
-  useEffect(() => {
-    async function loadModels() {
-      setLoading(true);
-      try {
-        await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromUri(process.env.PUBLIC_URL + "/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri(process.env.PUBLIC_URL + "/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri(process.env.PUBLIC_URL + "/models"),
-        ]);
-      } catch (error) {
-        console.error("Error loading models:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadModels();
-  }, []);
-
-  
-  // Monitor the video stream for liveness detection and calibration
   useEffect(() => {
   
     let isBlinking = false;
@@ -80,22 +51,14 @@ const Register = (props) => {
 
 
           if (leftEAR > EAR_THRESHOLD && rightEAR > EAR_THRESHOLD) {
-            // Eyes are closed
-            setLivenessDetected(true);
             console.log("eyes closed");
-
             if (!isBlinking) {
-              // If a blink wasn't already in progress, start it
               isBlinking = true;
             }
           } else {
-            // Eyes are open
             console.log("eyes open");
-
             if (isBlinking) {
-              // If a blink was in progress, increment the blink count
               setBlinkCount(blinkCount => blinkCount + 1)
-              // console.log("Blink count: ", blinkCount);
               isBlinking = false; // Reset blink status
             }
           }
@@ -117,13 +80,13 @@ const Register = (props) => {
 
       if (detections) {
         const userEmbedding = detections.descriptor;
-        setEmbedding(userEmbedding);
+        // setEmbedding(userEmbedding);
         await axios.post("http://localhost:5000/register", {
           username,
           embedding: userEmbedding,
         });
         alert("Registration successful!");
-        props.authenticateFace(userEmbedding);
+        authenticateFace(userEmbedding);
       }
     } catch (error) {
       if (error.response && error.response.status === 400) {
@@ -135,13 +98,6 @@ const Register = (props) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Start the video stream
-  const startVideo = () => {
-    navigator.mediaDevices.getUserMedia({ video: {} }).then((stream) => {
-      setVideoRef(stream);
-    });
   };
 
   return (
@@ -159,7 +115,7 @@ const Register = (props) => {
               onChange={(e) => setUsername(e.target.value)}
               sx={{ marginTop: 2, marginBottom: 2 }}
             />
-            <Button variant="contained" fullWidth onClick={startVideo} sx={{ marginBottom: 2 }}>
+            <Button variant="contained" fullWidth onClick={()=>startVideo()} sx={{ marginBottom: 2 }}>
               Start Video
             </Button>
             <div style={{ position: "relative" }}>
