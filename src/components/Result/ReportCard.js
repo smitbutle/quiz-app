@@ -7,7 +7,19 @@ const ReportCard = ({ report }) => {
   if (!report) return <Typography variant="h6">No report data available.</Typography>;
 
   const { username, test_id, details, summary } = report;
-
+  let passCount = 0
+  let failCount = 0
+  let notAttempted = 0
+  details.forEach((attempt) => {
+    if (attempt.status === 'Pass') {
+      passCount++
+    } else if (attempt.status === 'Fail') {
+      failCount++
+    }
+    else {
+      notAttempted++
+    }
+  })
   return (
     <Box sx={{ padding: 2 }}>
       {/* User and Test Info Card */}
@@ -31,6 +43,29 @@ const ReportCard = ({ report }) => {
       </Typography>
       <Grid container spacing={2}>
         {details.map((attempt, index) => (
+          !attempt.score ? <Grid item xs={12} md={6} key={index}>
+          <Paper
+            elevation={3}
+            sx={{
+              padding: 2,
+              borderLeft: `6px solid ${red[500]}`
+            }}
+          >
+            <Typography variant="subtitle1">Attempt #{index + 1}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Timestamp: {attempt.timestamp}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Score: N/A
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ color: red[600], fontWeight: 'bold' }}
+            >
+              Status: {"No face detected"}
+            </Typography>
+          </Paper>
+        </Grid> :
           <Grid item xs={12} md={6} key={index}>
             <Paper
               elevation={3}
@@ -73,6 +108,12 @@ const ReportCard = ({ report }) => {
           <Typography variant="body2">
             Total Attempts: {summary.total_attempts}
           </Typography>
+          {/* also display passed and failed ratio with total attempt */}
+          <Typography variant="body2"> 
+            Authentication score: {(passCount * 100 / (passCount + failCount + notAttempted)).toFixed(2)} %
+          </Typography>
+
+
         </CardContent>
       </Card>
     </Box>

@@ -183,19 +183,14 @@ async function getReport(username, testId) {
   };
 
 
-
-  
-
   const authenticateFace = async () => {
     setIsFaceRegistered(true);
   }
   
 
-
   const embeddingsPacketArray = [];
 
   useEffect(() => {
-
     let interval;
     if (videoRef && !loading) {
       interval = setInterval(async () => {
@@ -208,22 +203,20 @@ async function getReport(username, testId) {
         if (detections) {
           setFaceDetected(true);
           embeddingsPacketArray.push(detections.descriptor);
-          console.log(detections.descriptor);
           
-          if (embeddingsPacketArray.length === 5) {
-            submitAttempt(username, attempt_id, embeddingsPacketArray);
-            
-            embeddingsPacketArray.length = 0;
-          }
-
         } else {
+          embeddingsPacketArray.push(null);
           setFaceDetected(false);
+        }
+
+        if (embeddingsPacketArray.length === 5) {
+          submitAttempt(username, attempt_id, embeddingsPacketArray);
+          embeddingsPacketArray.length = 0;
         }
         
       }, 2000);
     }
     return () => clearInterval(interval);
-
   }, [videoRef, loading]);
 
 
