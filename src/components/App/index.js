@@ -24,6 +24,7 @@ const App = () => {
   const [faceDetected, setFaceDetected] = useState(false);
   const [username, setUsername] = useState("");
   const [attempt_id, setAttemptId] = useState("");
+  const [numberOfFaces, setNumberOfFaces] = useState(0);
 
   // const [livenessDetected, setLivenessDetected] = useState(false);
   useEffect(() => {
@@ -56,7 +57,7 @@ const App = () => {
           console.log(`After stopping, Ready State: ${track.readyState}`);
         }
         catch (e) { console.log(e) }
-        });
+      });
     };
 
     setVideoRef(null);
@@ -92,18 +93,18 @@ const App = () => {
 
   const [reportData, setReportData] = useState(null);
 
-async function getReport(username, testId) {
-  try {
-    const response = await axios.post('http://localhost:5000/getreport', {
-      username,
-      test_id: testId
-    });
-    setReportData(response.data);
-    
-  } catch (error) {
-    console.error(error.response ? error.response.data : error.message);
+  async function getReport(username, testId) {
+    try {
+      const response = await axios.post('http://localhost:5000/getreport', {
+        username,
+        test_id: testId
+      });
+      setReportData(response.data);
+
+    } catch (error) {
+      console.error(error.response ? error.response.data : error.message);
+    }
   }
-}
   const startQuiz = (data, countdownTime) => {
     setLoading(true);
     setLoadingMessage({
@@ -186,7 +187,7 @@ async function getReport(username, testId) {
   const authenticateFace = async () => {
     setIsFaceRegistered(true);
   }
-  
+
 
   const embeddingsPacketArray = [];
 
@@ -196,24 +197,41 @@ async function getReport(username, testId) {
       interval = setInterval(async () => {
         const video = document.getElementById("videoInput");
 
+        // const detections = await faceapi
+        //   .detectSingleFace(video)
+        //   .withFaceLandmarks().withFaceDescriptor();
+
         const detections = await faceapi
-          .detectSingleFace(video)
-          .withFaceLandmarks().withFaceDescriptor();
+          .detectAllFaces(video)
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+
+        // Check if more than one face is detected
+
 
         if (detections) {
-          setFaceDetected(true);
-          embeddingsPacketArray.push(detections.descriptor);
-          
-        } else {
-          embeddingsPacketArray.push(null);
-          setFaceDetected(false);
+
+          if (detections.length > 1) {
+            console.log("More than one face detected");
+            embeddingsPacketArray.push("X");
+            setNumberOfFaces(detections.length);
+          } else if (detections.length === 1) {
+            console.log("Only one face detected");
+            embeddingsPacketArray.push(detections[0].descriptor);
+            setNumberOfFaces(1);
+
+          } else {
+            console.log("No faces detected");
+            embeddingsPacketArray.push(null);
+            setNumberOfFaces(0);
+          }
         }
 
         if (embeddingsPacketArray.length === 5) {
           submitAttempt(username, attempt_id, embeddingsPacketArray);
           embeddingsPacketArray.length = 0;
         }
-        
+
       }, 2000);
     }
     return () => clearInterval(interval);
@@ -228,7 +246,7 @@ async function getReport(username, testId) {
 
       {/* Display Register component if not loading and not registered */}
       {!loading && !isQuizStarted && !isQuizCompleted && !isFaceRegistered && (
-        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef} username={username} setUsername={setUsername}/>
+        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef} username={username} setUsername={setUsername} />
       )}
 
       {/* Display main quiz content if face is registered */}
@@ -237,7 +255,6 @@ async function getReport(username, testId) {
           sx={{
             display: "flex",
             flexDirection: "row",
-            // height: "100vh", // Full viewport height
             width: "100vw", // Full viewport width
             padding: 3,
           }}
@@ -255,7 +272,7 @@ async function getReport(username, testId) {
           {!isQuizCompleted && !loading && (
             <Box
               sx={{
-                width: "20%", 
+                width: "20%",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -282,14 +299,20 @@ async function getReport(username, testId) {
                   </Box>
 
                   {/* Display detection status */}
-                  {!faceDetected ? (
+                  {numberOfFaces === 0 ? (
                     <Typography variant="h7" color="error">
-                      Face not detected, this incident will be reported.
+                      Face not detected.
                     </Typography>
                   ) : (
-                    <Typography variant="h6" gutterBottom color="success">
-                      Face detected.
-                    </Typography>
+                    numberOfFaces === 1 ? (
+                      <Typography variant="h7" color="success">
+                        Face detected.
+                      </Typography>
+                    ) : (
+                      <Typography variant="h7" color="error">
+                        Nultiple face detected, this incident will be reported.
+                      </Typography>
+                    )
                   )}
                 </CardContent>
               </Card>
@@ -300,7 +323,7 @@ async function getReport(username, testId) {
 
       {/* Display Result component if quiz is completed */}
       {!loading && isQuizCompleted && (
-        <Result {...resultData} replayQuiz={replayQuiz} resetQuiz={resetQuiz} reportData={reportData}/>
+        <Result {...resultData} replayQuiz={replayQuiz} resetQuiz={resetQuiz} reportData={reportData} />
       )}
     </Layout>
 
