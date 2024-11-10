@@ -11,6 +11,13 @@ import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
 import { shuffle } from '../../utils';
 import Register from '../FaceAuth/Register';
 
+const MODEL_STORE_NAME = "face-api-models";
+const MODEL_KEYS = [
+  "ssdMobilenetv1",
+  "faceRecognitionNet",
+  "faceLandmark68Net",
+];
+
 const App = () => {
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState(null);
@@ -26,7 +33,120 @@ const App = () => {
   const [attempt_id, setAttemptId] = useState("");
   const [numberOfFaces, setNumberOfFaces] = useState(0);
 
-  // const [livenessDetected, setLivenessDetected] = useState(false);
+
+
+  const loadAndCacheModel = async (modelKey, modelUrl) => {
+    try {
+      const response = await fetch(modelUrl);
+      const blob = await response.blob();
+      await saveModelToIndexedDB(modelKey, blob);
+      await faceapi.nets[modelKey].loadFromUri(
+        process.env.PUBLIC_URL + "/models"
+      );
+    } catch (error) {
+      console.error(`Error loading or caching model ${modelKey}:`, error);
+    }
+  };
+
+  async function loadModelsFromIndexedDB() {
+    if (!("indexedDB" in window)) {
+      console.warn("IndexedDB not supported.");
+      return null;
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(MODEL_STORE_NAME, 1);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        db.createObjectStore("models");
+      };
+
+      request.onsuccess = (event) => {
+        const db = event.target.result;
+        const transaction = db.transaction("models", "readonly");
+        const store = transaction.objectStore("models");
+
+        const modelPromises = MODEL_KEYS.map((key) => {
+          return new Promise((resolve) => {
+            const getRequest = store.get(key);
+            getRequest.onsuccess = () => {
+              resolve(getRequest.result);
+            };
+            getRequest.onerror = () => {
+              console.warn(`Failed to retrieve model ${key} from IndexedDB`);
+              resolve(null);
+            };
+          });
+        });
+
+        Promise.all(modelPromises).then((models) => {
+          if (models.some((model) => !model)) resolve(false);
+          else resolve(true);
+        });
+      };
+
+      request.onerror = () => reject("Failed to open IndexedDB.");
+    });
+  }
+
+  async function saveModelToIndexedDB(modelKey, blob) {
+    if (!("indexedDB" in window)) return;
+
+    const dbPromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(MODEL_STORE_NAME, 1);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        db.createObjectStore("models");
+      };
+
+      request.onsuccess = (event) => resolve(event.target.result);
+      request.onerror = () => reject("Failed to open IndexedDB.");
+    });
+
+    const db = await dbPromise;
+    const transaction = db.transaction("models", "readwrite");
+    const store = transaction.objectStore("models");
+
+    store.put(blob, modelKey);
+    await transaction.complete;
+  }
+
+
+
+  useEffect(() => {
+    async function loadModels() {
+      setLoading(true);
+      try {
+        const modelsFromDB = await loadModelsFromIndexedDB();
+        if (!modelsFromDB) {
+          await Promise.all([
+            loadAndCacheModel(
+              "ssdMobilenetv1",
+              "/models/ssd_mobilenetv1_model-weights_manifest.json"
+            ),
+            loadAndCacheModel(
+              "faceRecognitionNet",
+              "/models/face_recognition_model-weights_manifest.json"
+            ),
+            loadAndCacheModel(
+              "faceLandmark68Net",
+              "/models/face_landmark_68_model-weights_manifest.json"
+            ),
+          ]);
+        }
+        console.log("Models loaded");
+      } catch (error) {
+        console.error("Error loading models:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadModels();
+  }, []);
+
+  
   useEffect(() => {
     const loadModels = async () => {
       setLoading(true)
@@ -310,7 +430,7 @@ const App = () => {
                       </Typography>
                     ) : (
                       <Typography variant="h7" color="error">
-                        Nultiple face detected, this incident will be reported.
+                        Multiple face detected, this incident will be reported.
                       </Typography>
                     )
                   )}
