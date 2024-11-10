@@ -100,12 +100,12 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     try {
       const video = document.getElementById("videoInput");
       const detections = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
-      const userId = username+'_'+email
-      console.log(userId)
+      
       if (detections) {
         const userEmbedding = detections.descriptor;
         await axios.post("http://localhost:5000/register", {
-          userId,
+          username,
+          email,
           embedding: userEmbedding,
           hash: {
             m1: await hashModelFile('models/face_landmark_68_model-shard1'),

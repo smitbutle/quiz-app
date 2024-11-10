@@ -53,7 +53,7 @@ const ReportCard = ({ report }) => {
           >
             <Typography variant="subtitle1">Attempt #{index + 1}</Typography>
             <Typography variant="body2" color="text.secondary">
-              Timestamp: {attempt.timestamp}
+              Timestamp: {new Date(attempt.timestamp).toLocaleString()}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Score: N/A
@@ -76,7 +76,7 @@ const ReportCard = ({ report }) => {
             >
               <Typography variant="subtitle1">Attempt #{index + 1}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Timestamp: {attempt.timestamp}
+                Timestamp: {new Date(attempt.timestamp).toLocaleString()}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Score: {attempt.score.toFixed(3)}

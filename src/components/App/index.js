@@ -87,6 +87,16 @@ const App = () => {
       };
 
       request.onerror = () => reject("Failed to open IndexedDB.");
+
+      const loadModels = async () => {
+        setLoading(true)
+        const MODEL_URL = process.env.PUBLIC_URL + '/models'
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+        setLoading(false)
+      };
+      loadModels();
     });
   }
 
@@ -114,7 +124,6 @@ const App = () => {
   }
 
 
-
   useEffect(() => {
     async function loadModels() {
       setLoading(true);
@@ -135,8 +144,10 @@ const App = () => {
               "/models/face_landmark_68_model-weights_manifest.json"
             ),
           ]);
+          console.log("Models loaded and cached.");
+        } else {
+          console.log("Models loaded from IndexedDB.");
         }
-        console.log("Models loaded");
       } catch (error) {
         console.error("Error loading models:", error);
       } finally {
@@ -146,18 +157,6 @@ const App = () => {
     loadModels();
   }, []);
 
-  
-  useEffect(() => {
-    const loadModels = async () => {
-      setLoading(true)
-      const MODEL_URL = process.env.PUBLIC_URL + '/models'
-      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
-      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
-      setLoading(false)
-    };
-    loadModels();
-  }, []);
 
   const startVideo = () => {
     navigator.mediaDevices.getUserMedia({ video: {} }).then((stream) => {
@@ -198,12 +197,13 @@ const App = () => {
     }
   }
 
-  async function submitAttempt(username, testId, embeddingsArray) {
+  async function submitAttempt(username, testId, embeddingsArray, timeStapArray) {
     try {
       const response = await axios.post('http://localhost:5000/submitattempt', {
         username,
         test_id: testId,
-        embeddingsArray
+        embeddingsArray,
+        timeStapArray
       });
       console.log(response.data); // Output: { success: true, results: [{ embedding: ..., score: ... }, ...] }
     } catch (error) {
@@ -310,6 +310,7 @@ const App = () => {
 
 
   const embeddingsPacketArray = [];
+  const timeStapArray = [];
 
   useEffect(() => {
     let interval;
@@ -334,22 +335,26 @@ const App = () => {
           if (detections.length > 1) {
             console.log("More than one face detected");
             embeddingsPacketArray.push("X");
+            timeStapArray.push(new Date().getTime());
             setNumberOfFaces(detections.length);
           } else if (detections.length === 1) {
             console.log("Only one face detected");
             embeddingsPacketArray.push(detections[0].descriptor);
+            timeStapArray.push(new Date().getTime());
             setNumberOfFaces(1);
 
           } else {
             console.log("No faces detected");
             embeddingsPacketArray.push(null);
+            timeStapArray.push(new Date().getTime());
             setNumberOfFaces(0);
           }
         }
 
         if (embeddingsPacketArray.length === 5) {
-          submitAttempt(username, attempt_id, embeddingsPacketArray);
+          submitAttempt(username, attempt_id, embeddingsPacketArray, timeStapArray);
           embeddingsPacketArray.length = 0;
+          timeStapArray.length = 0;
         }
 
       }, 2000);
