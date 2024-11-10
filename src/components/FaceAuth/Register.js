@@ -3,6 +3,7 @@ import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, 
 import axios from "axios";
 import * as faceapi from "face-api.js";
 
+
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
@@ -76,6 +77,18 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     return true;
   };
 
+
+  const hashModelFile = async (filePath, algorithm = 'SHA-256') => {
+    const file = await fetch(process.env.PUBLIC_URL + '/' + filePath); // Load file
+    const buffer = await file.arrayBuffer(); // Read file as ArrayBuffer
+    const hashBuffer = await crypto.subtle.digest(algorithm, buffer); // Use Web Crypto API
+    const hashArray = Array.from(new Uint8Array(hashBuffer)); // Convert to array of bytes
+    const hashHex = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join(''); // Convert to hex
+    console.log(hashHex);
+    return hashHex;
+  };
+
+
   const handleRegister = async () => {
     if (!validateEmail() || !validateUsername()) return;
     if (!consent) {
@@ -87,18 +100,34 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     try {
       const video = document.getElementById("videoInput");
       const detections = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
-
+      const userId = username+'_'+email
+      console.log(userId)
       if (detections) {
         const userEmbedding = detections.descriptor;
         await axios.post("http://localhost:5000/register", {
-          username,
-          email,
+          userId,
           embedding: userEmbedding,
-        });
+          hash: {
+            m1: await hashModelFile('models/face_landmark_68_model-shard1'),
+            m2: await hashModelFile('models/face_recognition_model-shard1'),
+            m3: await hashModelFile('models/face_recognition_model-shard2'),
+            m4: await hashModelFile('models/ssd_mobilenetv1_model-shard1'),
+            m5: await hashModelFile('models/ssd_mobilenetv1_model-shard2'),
+            w1: await hashModelFile('models/face_landmark_68_model-weights_manifest.json'),
+            w2: await hashModelFile('models/face_recognition_model-weights_manifest.json'),
+            w3: await hashModelFile('models/ssd_mobilenetv1_model-weights_manifest.json')
+          }
+        })
+
         authenticateFace(userEmbedding);
       }
     } catch (error) {
-      console.error(error.response ? error.response.data : error.message);
+      if (error.response && error.response.status === 400) {
+        alert("User already registered");
+      } else {
+        console.error("An error occurred during registration:", error);
+        alert("An error occurred during registration. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -106,17 +135,30 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <Paper sx={{ padding: 4, textAlign: "center", maxWidth: 800 }}>
-        <Typography variant="h5" sx={{ marginBottom: 2 }}>Register</Typography>
+      <Paper sx={{ margin: 6, padding: 4, textAlign: "center", alignItems: "center", border: "1px solid #888888", }}>
+
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: "bold",
+            textAlign: "center",
+            marginBottom: 4,
+            paddingBottom: 4,
+            borderBottom: "2px solid #888888",
+            // color: "#1976d2",
+          }}
+        >
+          Register
+        </Typography>
 
         {loading ? (
           <CircularProgress sx={{ margin: 3 }} />
         ) : (
           <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
             {/* Left side: User info fields */}
-            <Box sx={{ flex: 1}}>
+            <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
               {/* <Tooltip title="This application requires IndexedDB, Webcam access, and Fullscreen mode.">
-                <Typography color="textSecondary" sx={{ marginBottom: 2, textAlign: "left" }}>
+                  <Typography color="textSecondary" sx={{ marginBottom: 2, textAlign: "left" }}>
                   Requirements:
                 </Typography>
               </Tooltip> */}
@@ -183,6 +225,7 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
                 sx={{
                   backgroundColor: blinkCount >= 2 && consent && !usernameError && !emailError ? "#1976d2" : "#9e9e9e",
                   color: "#fff",
+                  marginBottom: 2
                 }}
               >
                 {blinkCount < 2 ? "Waiting for blinks..." : "Register"}
