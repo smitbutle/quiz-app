@@ -1,18 +1,16 @@
-import React, { useState, useEffect, useRef } from "react";
-import * as faceapi from "face-api.js";
-import {
-  Button,
-  TextField,
-  Box,
-  Typography,
-  CircularProgress,
-  Paper,
-} from "@mui/material";
+import React, { useState, useEffect } from "react";
+import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, FormControlLabel, Tooltip, Alert, Snackbar } from "@mui/material";
 import axios from "axios";
+import * as faceapi from "face-api.js";
 
-const Register = ({authenticateFace, startVideo, videoRef, username, setUsername}) => {
+const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
+  const [email, setEmail] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [usernameError, setUsernameError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [openSnackbar, setOpenSnackbar] = useState(false);
 
   useEffect(() => {
     let isBlinking = false;
@@ -20,10 +18,7 @@ const Register = ({authenticateFace, startVideo, videoRef, username, setUsername
     if (videoRef && !loading) {
       interval = setInterval(async () => {
         const video = document.getElementById("videoInput");
-
-        const detections = await faceapi
-          .detectSingleFace(video)
-          .withFaceLandmarks();
+        const detections = await faceapi.detectSingleFace(video).withFaceLandmarks();
 
         if (detections) {
           const leftEye = detections.landmarks.getLeftEye();
@@ -31,13 +26,8 @@ const Register = ({authenticateFace, startVideo, videoRef, username, setUsername
 
           // Simple blink detection based on eye landmarks
           const eyeAspectRatio = (eye) => {
-            const width = Math.hypot(
-              eye[3].x - eye[0].x,
-              eye[3].y - eye[0].y
-            );
-            const height =
-              Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y) +
-              Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+            const width = Math.hypot(eye[3].x - eye[0].x, eye[3].y - eye[0].y);
+            const height = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y) + Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
             return width / (height / 2);
           };
 
@@ -45,18 +35,13 @@ const Register = ({authenticateFace, startVideo, videoRef, username, setUsername
           const rightEAR = eyeAspectRatio(rightEye);
           const EAR_THRESHOLD = 3.7; // Threshold for detecting a blink
 
-          console.log(leftEAR, rightEAR, EAR_THRESHOLD);
-
-
           if (leftEAR > EAR_THRESHOLD && rightEAR > EAR_THRESHOLD) {
-            console.log("eyes closed");
             if (!isBlinking) {
               isBlinking = true;
             }
           } else {
-            console.log("eyes open");
             if (isBlinking) {
-              setBlinkCount(blinkCount => blinkCount + 1)
+              setBlinkCount((blinkCount) => blinkCount + 1);
               isBlinking = false; // Reset blink status
             }
           }
@@ -66,20 +51,48 @@ const Register = ({authenticateFace, startVideo, videoRef, username, setUsername
     return () => clearInterval(interval);
   }, [loading, videoRef]);
 
-  // Handle registration process
+  // Handle field validations
+  const validateEmail = () => {
+    if (!email) {
+      setEmailError("Email is required.");
+      return false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError("Enter a valid email address.");
+      return false;
+    }
+    setEmailError("");
+    return true;
+  };
+
+  const validateUsername = () => {
+    if (!username) {
+      setUsernameError("Username is required.");
+      return false;
+    } else if (username.length < 3) {
+      setUsernameError("Username must be at least 3 characters long.");
+      return false;
+    }
+    setUsernameError("");
+    return true;
+  };
+
   const handleRegister = async () => {
+    if (!validateEmail() || !validateUsername()) return;
+    if (!consent) {
+      setOpenSnackbar(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const video = document.getElementById("videoInput");
-      const detections = await faceapi
-        .detectSingleFace(video)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      const detections = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
 
       if (detections) {
         const userEmbedding = detections.descriptor;
         await axios.post("http://localhost:5000/register", {
           username,
+          email,
           embedding: userEmbedding,
         });
         authenticateFace(userEmbedding);
@@ -93,56 +106,102 @@ const Register = ({authenticateFace, startVideo, videoRef, username, setUsername
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <Paper sx={{ padding: 4, maxWidth: 480, textAlign: "center" }}>
-        <Typography variant="h5">Register</Typography>
+      <Paper sx={{ padding: 4, textAlign: "center", maxWidth: 800 }}>
+        <Typography variant="h5" sx={{ marginBottom: 2 }}>Register</Typography>
+
         {loading ? (
           <CircularProgress sx={{ margin: 3 }} />
         ) : (
-          <>
-            <TextField
-              fullWidth
-              label="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              sx={{ marginTop: 2, marginBottom: 2 }}
-            />
-            <Button variant="contained" fullWidth onClick={()=>{startVideo()}} sx={{ marginBottom: 2 }}>
-              Start Video
-            </Button>
-            <div style={{ position: "relative" }}>
+          <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
+            {/* Left side: User info fields */}
+            <Box sx={{ flex: 1}}>
+              {/* <Tooltip title="This application requires IndexedDB, Webcam access, and Fullscreen mode.">
+                <Typography color="textSecondary" sx={{ marginBottom: 2, textAlign: "left" }}>
+                  Requirements:
+                </Typography>
+              </Tooltip> */}
+
+              <Box>
+                <TextField
+                  fullWidth
+                  label="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onBlur={validateUsername}
+                  error={!!usernameError}
+                  helperText={usernameError}
+                  sx={{ marginBottom: 2 }}
+                />
+
+                <TextField
+                  fullWidth
+                  label="Email Address"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={validateEmail}
+                  error={!!emailError}
+                  helperText={emailError}
+                  sx={{ marginBottom: 2 }}
+                />
+              </Box>
+
+              <Box>
+                <FormControlLabel
+                  control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} />}
+                  label="I consent to the use of my face data for authentication purposes."
+                  sx={{ marginBottom: 2, textAlign: "left" }}
+                />
+
+                <Button variant="contained" fullWidth onClick={startVideo} sx={{ marginBottom: 2 }}>
+                  Start Video
+                </Button>
+
+              </Box>
+            </Box>
+
+            {/* Right side: Video and blink detection */}
+            <Box sx={{ flex: 1, textAlign: "center" }}>
               <video
                 id="videoInput"
                 width="100%"
                 height="360"
                 autoPlay
                 style={{ borderRadius: 8, marginBottom: 2 }}
-                ref={(ref) => (ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null)}
+                ref={(ref) => ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null}
               />
-            </div>
-            <Typography variant="body1" sx={{ margin: 2 }}>
-            </Typography>
 
-            {blinkCount < 2 &&
-              <Typography variant="body1" sx={{ margin: 2 }}>
-                Blink your eyes twice to register.
+              <Typography variant="body1" sx={{ marginBottom: 2 }}>
+                {blinkCount < 2 ? `Blinked ${blinkCount}/2 times` : "Ready to register!"}
               </Typography>
-            }
-            
-            <Button
-              variant="contained"
-              fullWidth
-              onClick={handleRegister}
-              disabled={blinkCount < 2}
-              sx={{
-                backgroundColor: blinkCount >= 2 ? "#1976d2" : "#9e9e9e",
-                color: "#fff",
-                marginTop: 2,
-              }}
-            >
-              Register
-            </Button>
-          </>
+
+              <Button
+                variant="contained"
+                fullWidth
+                onClick={handleRegister}
+                disabled={blinkCount < 2 || !consent || !!usernameError || !!emailError}
+                sx={{
+                  backgroundColor: blinkCount >= 2 && consent && !usernameError && !emailError ? "#1976d2" : "#9e9e9e",
+                  color: "#fff",
+                }}
+              >
+                {blinkCount < 2 ? "Waiting for blinks..." : "Register"}
+              </Button>
+            </Box>
+          </Box>
         )}
+
+        {/* Snackbar alert for missing consent */}
+        <Snackbar
+          open={openSnackbar}
+          autoHideDuration={3000}
+          onClose={() => setOpenSnackbar(false)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={() => setOpenSnackbar(false)} severity="warning" sx={{ width: '100%' }}>
+            You must consent to use face data for registration.
+          </Alert>
+        </Snackbar>
       </Paper>
     </Box>
   );
