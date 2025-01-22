@@ -8,6 +8,10 @@ import Result from '../Result';
 import axios from 'axios';
 import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
 
+
+const URL = "https://glowing-adventure-75447v4j5553rx7p-5000.app.github.dev"
+
+
 import { shuffle } from '../../utils';
 import Register from '../FaceAuth/Register';
 
@@ -184,7 +188,7 @@ const App = () => {
 
   async function startTest(username, testName) {
     try {
-      const response = await axios.post('http://localhost:5000/starttest', {
+      const response = await axios.post(`${URL}/starttest`, {
         username,
         test_name: testName
       });
@@ -199,7 +203,7 @@ const App = () => {
 
   async function submitAttempt(username, testId, embeddingsArray, timeStapArray) {
     try {
-      const response = await axios.post('http://localhost:5000/submitattempt', {
+      const response = await axios.post(`${URL}/submitattempt`, {
         username,
         test_id: testId,
         embeddingsArray,
@@ -215,7 +219,7 @@ const App = () => {
 
   async function getReport(username, testId) {
     try {
-      const response = await axios.post('http://localhost:5000/getreport', {
+      const response = await axios.post(`${URL}/getreport`, {
         username,
         test_id: testId
       });
