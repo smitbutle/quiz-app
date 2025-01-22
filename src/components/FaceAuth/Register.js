@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, FormControlLabel, Tooltip, Alert, Snackbar } from "@mui/material";
 import axios from "axios";
 import * as faceapi from "face-api.js";
-const URL = "https://glowing-adventure-75447v4j5553rx7p-5000.app.github.dev"
+import { URL } from '../../consts';
 
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);

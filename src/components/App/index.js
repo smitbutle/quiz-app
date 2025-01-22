@@ -7,13 +7,10 @@ import Quiz from '../Quiz';
 import Result from '../Result';
 import axios from 'axios';
 import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
-
-
-const URL = "https://glowing-adventure-75447v4j5553rx7p-5000.app.github.dev"
-
-
 import { shuffle } from '../../utils';
 import Register from '../FaceAuth/Register';
+import { URL } from '../../consts';
+
 
 const MODEL_STORE_NAME = "face-api-models";
 const MODEL_KEYS = [
@@ -312,19 +309,17 @@ const App = () => {
     setIsFaceRegistered(true);
   }
 
-
   const embeddingsPacketArray = [];
   const timeStapArray = [];
 
   useEffect(() => {
+    console.log("hello " +  loading )
+    console.log(videoRef)
+    console.log(embeddingsPacketArray)
     let interval;
-    if (videoRef && !loading) {
+    if (videoRef && !loading && isFaceRegistered) {
       interval = setInterval(async () => {
         const video = document.getElementById("videoInput");
-
-        // const detections = await faceapi
-        //   .detectSingleFace(video)
-        //   .withFaceLandmarks().withFaceDescriptor();
 
         const detections = await faceapi
           .detectAllFaces(video)
@@ -332,8 +327,6 @@ const App = () => {
           .withFaceDescriptors();
 
         // Check if more than one face is detected
-
-
         if (detections) {
 
           if (detections.length > 1) {
