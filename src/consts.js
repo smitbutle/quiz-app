@@ -1,1 +1,1 @@
-export const URL = "https://glowing-adventure-75447v4j5553rx7p-5000.app.github.dev"
+export const URL = "https://fictional-sniffle-w5jjvrjq5rq3v674-5000.app.github.dev"

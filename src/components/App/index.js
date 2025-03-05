@@ -172,9 +172,9 @@ const App = () => {
 
       videoRef.getTracks().forEach((track) => {
         try {
-          console.log(`Track ID: ${track.id}, Kind: ${track.kind}, Ready State: ${track.readyState}`);
+          // console.log(`Track ID: ${track.id}, Kind: ${track.kind}, Ready State: ${track.readyState}`);
           track.stop();
-          console.log(`After stopping, Ready State: ${track.readyState}`);
+          // console.log(`After stopping, Ready State: ${track.readyState}`);
         }
         catch (e) { console.log(e) }
       });
@@ -189,7 +189,7 @@ const App = () => {
         username,
         test_name: testName
       });
-      console.log(response.data);
+      // console.log(response.data);
       // Output: { message: 'Test started successfully', test_id: <generated_test_id> }
       setAttemptId(response.data.test_id);
 
@@ -206,7 +206,7 @@ const App = () => {
         embeddingsArray,
         timeStapArray
       });
-      console.log(response.data); // Output: { success: true, results: [{ embedding: ..., score: ... }, ...] }
+      // console.log(response.data); // Output: { success: true, results: [{ embedding: ..., score: ... }, ...] }
     } catch (error) {
       console.error(error.response ? error.response.data : error.message);
     }
@@ -313,9 +313,6 @@ const App = () => {
   const timeStapArray = [];
 
   useEffect(() => {
-    console.log("hello " +  loading )
-    console.log(videoRef)
-    console.log(embeddingsPacketArray)
     let interval;
     if (videoRef && !loading && isFaceRegistered) {
       interval = setInterval(async () => {

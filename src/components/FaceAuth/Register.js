@@ -84,7 +84,7 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     const hashBuffer = await crypto.subtle.digest(algorithm, buffer); // Use Web Crypto API
     const hashArray = Array.from(new Uint8Array(hashBuffer)); // Convert to array of bytes
     const hashHex = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join(''); // Convert to hex
-    console.log(hashHex);
+    // console.log(hashHex);
     return hashHex;
   };
 
@@ -122,11 +122,16 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
         authenticateFace(userEmbedding);
       }
     } catch (error) {
-      if (error.response && error.response.status === 400) {
-        alert("User already registered");
+      console.log(error);
+      if (error.response.status === 401) {
+        alert("Username already registered");
+      } else if (error.response.status === 402) {
+        alert("Hash mismatch, please refresh the page to fetch latest models");
+        // clear the local storage
+        // localStorage.clear();
       } else {
         console.error("An error occurred during registration:", error);
-        alert("An error occurred during registration. Please try again.");
+        alert("An error occurred during registration. Please refresh and try again.");
       }
     } finally {
       setLoading(false);
