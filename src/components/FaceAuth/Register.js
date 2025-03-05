@@ -3,6 +3,7 @@ import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, 
 import axios from "axios";
 import * as faceapi from "face-api.js";
 import { URL } from '../../consts';
+import { JSEncrypt } from "jsencrypt";
 
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);
@@ -88,6 +89,29 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     return hashHex;
   };
 
+  let cachedPublicKey = null;
+
+   const encrypt_using_server_public_key = async (userEmbedding) => {
+      try {
+          let publicKey;
+          if (cachedPublicKey) {
+              publicKey = cachedPublicKey;
+          } else {
+              const response = await axios.get(`${URL}/register/getPubKey`);
+              publicKey = response.data.publicKey;
+              cachedPublicKey = publicKey; // Store the public key in the cache
+          }
+
+          const encrypt = new JSEncrypt();
+          encrypt.setPublicKey(publicKey);
+          const encrypted = encrypt.encrypt(JSON.stringify(userEmbedding));
+          return encrypted;
+      } catch (error) {
+          console.error("Error fetching public key:", error);
+          return userEmbedding; // Fallback to unencrypted embedding in case of error
+      }
+   };
+
 
   const handleRegister = async () => {
     if (!validateEmail() || !validateUsername()) return;
@@ -103,10 +127,12 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
       
       if (detections) {
         const userEmbedding = detections.descriptor;
+        // encrypt user embedding here using server public key 
+        const encrypted_user_embedding = encrypt_using_server_public_key(userEmbedding);
         await axios.post(`${URL}/register`, {
           username,
           email,
-          embedding: userEmbedding,
+          embedding: encrypted_user_embedding,
           hash: {
             m1: await hashModelFile('models/face_landmark_68_model-shard1'),
             m2: await hashModelFile('models/face_recognition_model-shard1'),
@@ -119,7 +145,7 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
           }
         })
 
-        authenticateFace(userEmbedding);
+        authenticateFace(userEmbedding);  // i guess sending encrypted_user_embedding will not matter to this function
       }
     } catch (error) {
       if (error.response && error.response.status === 400) {
