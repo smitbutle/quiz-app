@@ -3,7 +3,9 @@ import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, 
 import axios from "axios";
 import * as faceapi from "face-api.js";
 import { URL } from '../../consts';
-import { JSEncrypt } from "jsencrypt";
+import * as ecies from 'ecies-parity';
+import * as CryptoJS from 'crypto-js';
+import base64 from 'base-64';
 
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);
@@ -89,29 +91,45 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     return hashHex;
   };
 
-  let cachedPublicKey = null;
+  const encrypt_using_server_public_key = async (userEmbedding) => {
+    try {
+        console.log("Embedding: ", userEmbedding);
 
-   const encrypt_using_server_public_key = async (userEmbedding) => {
-      try {
-          let publicKey;
-          if (cachedPublicKey) {
-              publicKey = cachedPublicKey;
-          } else {
-              const response = await axios.get(`${URL}/register/getPubKey`);
-              publicKey = response.data.publicKey;
-              cachedPublicKey = publicKey; // Store the public key in the cache
-          }
+        // Fetch the public key from the server
+        const response = await axios.get(`${URL}/getpubkey`);
 
-          const encrypt = new JSEncrypt();
-          encrypt.setPublicKey(publicKey);
-          const encrypted = encrypt.encrypt(JSON.stringify(userEmbedding));
-          return encrypted;
-      } catch (error) {
-          console.error("Error fetching public key:", error);
-          return userEmbedding; // Fallback to unencrypted embedding in case of error
-      }
-   };
+        if (response.status !== 200 || !response.data.publicKey) {
+            console.error("Error fetching public key:", response);
+            return ""; // Fallback in case of error
+        }
 
+        const publicKeyHex = response.data.publicKey.trim(); // Trim extra spaces
+        console.log("Public Key: ", publicKeyHex);
+
+        // 1️⃣ Generate a random 256-bit AES key
+        const aesKey = CryptoJS.lib.WordArray.random(32); // 32 bytes = 256 bits
+
+        // 2️⃣ Encrypt the AES key using ECC (ECIES)
+        const encryptedAesKey = ecies.encrypt(Buffer.from(publicKeyHex, 'hex'), Buffer.from(aesKey.toString(CryptoJS.enc.Hex), 'hex'));
+        const encryptedAesKeyBase64 = base64.encode(encryptedAesKey); // Convert to base64
+
+        // 3️⃣ Generate a random IV (nonce) for AES-GCM
+        const iv = CryptoJS.lib.WordArray.random(12); // 12 bytes IV for AES-GCM
+
+        // 4️⃣ Encrypt user embedding using AES-GCM
+        const cipher = CryptoJS.AES.encrypt(CryptoJS.lib.WordArray.create(userEmbedding), aesKey, { iv: iv, mode: CryptoJS.mode.GCM });
+
+        // 5️⃣ Convert IV and encrypted data to base64
+        const ivBase64 = base64.encode(Buffer.from(iv.toString(CryptoJS.enc.Hex), 'hex'));
+        const encryptedEmbeddingBase64 = base64.encode(Buffer.from(cipher.ciphertext.toString(CryptoJS.enc.Hex), 'hex'));
+
+        return { encrypted_aes_key: encryptedAesKeyBase64, iv: ivBase64, embedding: encryptedEmbeddingBase64 };
+
+    } catch (error) {
+        console.error("Error during encryption:", error);
+        return null;
+    }
+};
 
   const handleRegister = async () => {
     if (!validateEmail() || !validateUsername()) return;
@@ -119,20 +137,29 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
       setOpenSnackbar(true);
       return;
     }
-
+  
     setLoading(true);
     try {
       const video = document.getElementById("videoInput");
       const detections = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
-      
+  
       if (detections) {
         const userEmbedding = detections.descriptor;
-        // encrypt user embedding here using server public key 
-        const encrypted_user_embedding = encrypt_using_server_public_key(userEmbedding);
+  
+        //  Encrypt the user embedding using the new function
+        const encryptedData = await encrypt_using_server_public_key(userEmbedding);
+  
+        if (!encryptedData) {
+          alert("Encryption failed. Try again.");
+          return;
+        }
+  
         await axios.post(`${URL}/register`, {
           username,
           email,
-          embedding: encrypted_user_embedding,
+          encrypted_aes_key: encryptedData.encrypted_aes_key, // Encrypted AES key
+          iv: encryptedData.iv, // IV (nonce)
+          embedding: encryptedData.embedding, // Encrypted embedding
           hash: {
             m1: await hashModelFile('models/face_landmark_68_model-shard1'),
             m2: await hashModelFile('models/face_recognition_model-shard1'),
@@ -143,9 +170,9 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
             w2: await hashModelFile('models/face_recognition_model-weights_manifest.json'),
             w3: await hashModelFile('models/ssd_mobilenetv1_model-weights_manifest.json')
           }
-        })
-
-        authenticateFace(userEmbedding);  // i guess sending encrypted_user_embedding will not matter to this function
+        });
+  
+        authenticateFace(userEmbedding); // This should use the raw embedding, not encrypted one
       }
     } catch (error) {
       if (error.response && error.response.status === 400) {
@@ -157,7 +184,7 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     } finally {
       setLoading(false);
     }
-  };
+  };  
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
