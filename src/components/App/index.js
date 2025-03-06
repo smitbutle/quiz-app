@@ -418,7 +418,7 @@ const App = () => {
                   </Box>
 
                   {/* Display detection status */}
-                  {numberOfFaces === 0 ? (
+                  {isQuizStarted ? (numberOfFaces === 0 ? (
                     <Typography variant="h7" color="error">
                       Face not detected.
                     </Typography>
@@ -432,7 +432,9 @@ const App = () => {
                         Multiple face detected, this incident will be reported.
                       </Typography>
                     )
-                  )}
+                  )) :
+                    <Typography variant="h7" color="success">
+                    </Typography>}
                 </CardContent>
               </Card>
             </Box>
