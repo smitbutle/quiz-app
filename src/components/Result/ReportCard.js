@@ -62,7 +62,7 @@ const ReportCard = ({ report }) => {
               variant="body2"
               sx={{ color: red[600], fontWeight: 'bold' }}
             >
-              Status: {"No face detected"}
+              Status: {"Face detected failed"}
             </Typography>
           </Paper>
         </Grid> :
