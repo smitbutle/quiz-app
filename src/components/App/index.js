@@ -356,7 +356,33 @@ const App = () => {
     return () => clearInterval(interval);
   }, [videoRef, loading]);
 
+  const buzz = () => {
+    const audioCtx = new window.AudioContext();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
 
+    oscillator.type = "square";
+    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.start();
+
+    setTimeout(() => {
+      oscillator.stop();
+      audioCtx.close();
+    }, 1000);
+  };
+
+  // Buzzer only goes on when no face or multiple faces detected
+  // It just buzzes for 1 second and goes silent
+  // When face is detected no buzzer but the above process continues thereafter for violation
+  useEffect(() => {
+    if (isQuizStarted && (numberOfFaces === 0 || numberOfFaces > 1)) {
+      buzz();
+    }
+  }, [isQuizStarted, numberOfFaces]);
 
   return (
     <Layout>
