@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import * as faceapi from "face-api.js";
 import Layout from '../Layout';
 import Loader from '../Loader';
@@ -6,448 +6,366 @@ import Main from '../Main';
 import Quiz from '../Quiz';
 import Result from '../Result';
 import axios from 'axios';
-import { Box, Card, CardContent, Typography, IconButton } from "@mui/material";
+import { Box, Card, CardContent, Typography } from "@mui/material";
 import { shuffle } from '../../utils';
 import Register from '../FaceAuth/Register';
 import { URL } from '../../consts';
 
+// Constants
+const MODEL_URL = process.env.PUBLIC_URL + '/models';
+const DETECTION_INTERVAL = 2000;
+const MAX_EMBEDDINGS = 5;
 
-const MODEL_STORE_NAME = "face-api-models";
-const MODEL_KEYS = [
-  "ssdMobilenetv1",
-  "faceRecognitionNet",
-  "faceLandmark68Net",
-];
+// Video component for face detection
+const VideoFeed = React.memo(({ videoRef, numberOfFaces, isQuizStarted }) => (
+  <Box sx={{ width: "20%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <Card sx={{ width: "100%", borderRadius: 2, boxShadow: 3, overflow: "hidden" }}>
+      <CardContent>
+        <Box sx={{ position: "relative", width: "100%" }}>
+          <video
+            id="videoInput"
+            width="100%"
+            autoPlay
+            style={{ borderRadius: 8, objectFit: "cover" }}
+            ref={(ref) => (ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null)}
+          />
+        </Box>
+        {isQuizStarted && (
+          <Typography 
+            variant="h7" 
+            color={numberOfFaces === 0 ? "error" : numberOfFaces === 1 ? "success" : "error"}
+          >
+            {numberOfFaces === 0 
+              ? "Face not detected."
+              : numberOfFaces === 1 
+                ? "Face detected."
+                : "Multiple face detected, this incident will be reported."}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  </Box>
+));
+
+// Main content component
+const MainContent = React.memo(({ 
+  isQuizStarted, 
+  isQuizCompleted, 
+  loading, 
+  data, 
+  countdownTime, 
+  startQuiz, 
+  endQuiz 
+}) => (
+  <Box sx={{ flex: 1, marginRight: 3, width: "80%" }}>
+    {!loading && !isQuizStarted && !isQuizCompleted && (
+      <Main startQuiz={startQuiz} />
+    )}
+    {!loading && isQuizStarted && (
+      <Quiz data={data} countdownTime={countdownTime} endQuiz={endQuiz} />
+    )}
+  </Box>
+));
 
 const App = () => {
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState(null);
-  const [data, setData] = useState(null);
-  const [countdownTime, setCountdownTime] = useState(null);
-  const [isQuizStarted, setIsQuizStarted] = useState(false);
-  const [isQuizCompleted, setIsQuizCompleted] = useState(false);
-  const [isFaceRegistered, setIsFaceRegistered] = useState(false);
-  const [resultData, setResultData] = useState(null);
-  const [videoRef, setVideoRef] = useState(null);
-  const [faceDetected, setFaceDetected] = useState(false);
-  const [username, setUsername] = useState("");
-  const [attempt_id, setAttemptId] = useState("");
-  const [numberOfFaces, setNumberOfFaces] = useState(0);
+  // State management
+  const [state, setState] = useState({
+    loading: false,
+    loadingMessage: null,
+    data: null,
+    countdownTime: null,
+    isQuizStarted: false,
+    isQuizCompleted: false,
+    isFaceRegistered: false,
+    resultData: null,
+    videoRef: null,
+    faceDetected: false,
+    username: "",
+    attempt_id: "",
+    numberOfFaces: 0,
+    reportData: null
+  });
 
+  // Memoized arrays for face detection
+  const embeddingsPacketArray = useMemo(() => [], []);
+  const timeStapArray = useMemo(() => [], []);
 
-
-  const loadAndCacheModel = async (modelKey, modelUrl) => {
-    try {
-      const response = await fetch(modelUrl);
-      const blob = await response.blob();
-      await saveModelToIndexedDB(modelKey, blob);
-      await faceapi.nets[modelKey].loadFromUri(
-        process.env.PUBLIC_URL + "/models"
-      );
-    } catch (error) {
-      console.error(`Error loading or caching model ${modelKey}:`, error);
-    }
-  };
-
-  async function loadModelsFromIndexedDB() {
-    if (!("indexedDB" in window)) {
-      console.warn("IndexedDB not supported.");
-      return null;
-    }
-
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(MODEL_STORE_NAME, 1);
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        db.createObjectStore("models");
-      };
-
-      request.onsuccess = (event) => {
-        const db = event.target.result;
-        const transaction = db.transaction("models", "readonly");
-        const store = transaction.objectStore("models");
-
-        const modelPromises = MODEL_KEYS.map((key) => {
-          return new Promise((resolve) => {
-            const getRequest = store.get(key);
-            getRequest.onsuccess = () => {
-              resolve(getRequest.result);
-            };
-            getRequest.onerror = () => {
-              console.warn(`Failed to retrieve model ${key} from IndexedDB`);
-              resolve(null);
-            };
-          });
-        });
-
-        Promise.all(modelPromises).then((models) => {
-          if (models.some((model) => !model)) resolve(false);
-          else resolve(true);
-        });
-      };
-
-      request.onerror = () => reject("Failed to open IndexedDB.");
-
-      const loadModels = async () => {
-        setLoading(true)
-        const MODEL_URL = process.env.PUBLIC_URL + '/models'
-        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
-        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
-        setLoading(false)
-      };
-      loadModels();
-    });
-  }
-
-  async function saveModelToIndexedDB(modelKey, blob) {
-    if (!("indexedDB" in window)) return;
-
-    const dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(MODEL_STORE_NAME, 1);
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        db.createObjectStore("models");
-      };
-
-      request.onsuccess = (event) => resolve(event.target.result);
-      request.onerror = () => reject("Failed to open IndexedDB.");
-    });
-
-    const db = await dbPromise;
-    const transaction = db.transaction("models", "readwrite");
-    const store = transaction.objectStore("models");
-
-    store.put(blob, modelKey);
-    await transaction.complete;
-  }
-
-
-  useEffect(() => {
-    async function loadModels() {
-      setLoading(true);
-      try {
-        const modelsFromDB = await loadModelsFromIndexedDB();
-        if (!modelsFromDB) {
-          await Promise.all([
-            loadAndCacheModel(
-              "ssdMobilenetv1",
-              "/models/ssd_mobilenetv1_model-weights_manifest.json"
-            ),
-            loadAndCacheModel(
-              "faceRecognitionNet",
-              "/models/face_recognition_model-weights_manifest.json"
-            ),
-            loadAndCacheModel(
-              "faceLandmark68Net",
-              "/models/face_landmark_68_model-weights_manifest.json"
-            ),
-          ]);
-          console.log("Models loaded and cached.");
-        } else {
-          console.log("Models loaded from IndexedDB.");
-        }
-      } catch (error) {
-        console.error("Error loading models:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadModels();
+  // Update state helper
+  const updateState = useCallback((updates) => {
+    setState(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // Load models
+  const loadModels = useCallback(async () => {
+    updateState({ loading: true });
+    try {
+      await Promise.all([
+        faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
+      ]);
+      console.log("Models loaded successfully");
+    } catch (error) {
+      console.error("Error loading models:", error);
+      throw error;
+    } finally {
+      updateState({ loading: false });
+    }
+  }, [updateState]);
 
-  const startVideo = () => {
-    navigator.mediaDevices.getUserMedia({ video: {} }).then((stream) => {
-      setVideoRef(stream);
-      console.log('video started', stream.id);
-    });
-  };
-
-  const stopVideo = () => {
-    console.log('stopping video');
-    if (videoRef) {
-
-      videoRef.getTracks().forEach((track) => {
-        try {
-          // console.log(`Track ID: ${track.id}, Kind: ${track.kind}, Ready State: ${track.readyState}`);
-          track.stop();
-          // console.log(`After stopping, Ready State: ${track.readyState}`);
-        }
-        catch (e) { console.log(e) }
+  // Video handling functions
+  const startVideo = useCallback(() => {
+    navigator.mediaDevices.getUserMedia({ video: {} })
+      .then((stream) => {
+        updateState({ videoRef: stream });
+        console.log('video started', stream.id);
+      })
+      .catch(error => {
+        console.error('Error accessing camera:', error);
       });
-    };
+  }, [updateState]);
 
-    setVideoRef(null);
-  };
+  const stopVideo = useCallback(() => {
+    if (state.videoRef) {
+      state.videoRef.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {
+          console.error('Error stopping video track:', e);
+        }
+      });
+    }
+    updateState({ videoRef: null });
+  }, [state.videoRef, updateState]);
 
-  async function startTest(username, testName) {
+  // API calls
+  const startTest = useCallback(async (username, testName) => {
     try {
       const response = await axios.post(`${URL}/starttest`, {
         username,
         test_name: testName
       });
-      // console.log(response.data);
-      // Output: { message: 'Test started successfully', test_id: <generated_test_id> }
-      setAttemptId(response.data.test_id);
-
+      updateState({ attempt_id: response.data.test_id });
     } catch (error) {
-      console.error(error.response ? error.response.data : error.message);
+      console.error('Error starting test:', error.response?.data || error.message);
+      throw error;
     }
-  }
+  }, [updateState]);
 
-  async function submitAttempt(username, testId, embeddingsArray, timeStapArray) {
+  const submitAttempt = useCallback(async (username, testId, embeddingsArray, timeStapArray) => {
     try {
-      const response = await axios.post(`${URL}/submitattempt`, {
+      await axios.post(`${URL}/submitattempt`, {
         username,
         test_id: testId,
         embeddingsArray,
         timeStapArray
       });
-      // console.log(response.data); // Output: { success: true, results: [{ embedding: ..., score: ... }, ...] }
     } catch (error) {
-      console.error(error.response ? error.response.data : error.message);
+      console.error('Error submitting attempt:', error.response?.data || error.message);
+      throw error;
     }
-  }
+  }, []);
 
-  const [reportData, setReportData] = useState(null);
-
-  async function getReport(username, testId) {
+  const getReport = useCallback(async (username, testId) => {
     try {
       const response = await axios.post(`${URL}/getreport`, {
         username,
         test_id: testId
       });
-      setReportData(response.data);
-
+      updateState({ reportData: response.data });
     } catch (error) {
-      console.error(error.response ? error.response.data : error.message);
+      console.error('Error getting report:', error.response?.data || error.message);
+      throw error;
     }
-  }
-  const startQuiz = (data, countdownTime) => {
-    setLoading(true);
-    setLoadingMessage({
-      title: 'Loading your quiz...',
-      message: "It won't be long!",
+  }, [updateState]);
+
+  // Quiz control functions
+  const startQuiz = useCallback((data, countdownTime) => {
+    updateState({
+      loading: true,
+      loadingMessage: {
+        title: 'Loading your quiz...',
+        message: "It won't be long!",
+      }
     });
-    startTest(username, "Math Exam");
-    setCountdownTime(countdownTime);
+    
+    startTest(state.username, "Math Exam");
+    updateState({ countdownTime });
+    
     setTimeout(() => {
-      setData(data);
-      setIsQuizStarted(true);
-      setLoading(false);
+      updateState({
+        data,
+        isQuizStarted: true,
+        loading: false
+      });
     }, 1000);
-  };
+  }, [state.username, startTest, updateState]);
 
-  const endQuiz = resultData => {
-
+  const endQuiz = useCallback((resultData) => {
     stopVideo();
-    setLoading(true);
-    getReport(username, attempt_id);
-    setLoadingMessage({
-      title: 'Fetching your results...',
-      message: 'Just a moment!',
+    updateState({
+      loading: true,
+      loadingMessage: {
+        title: 'Fetching your results...',
+        message: 'Just a moment!',
+      }
     });
+    
+    getReport(state.username, state.attempt_id);
 
     setTimeout(() => {
-
-      setIsQuizStarted(false);
-      setIsQuizCompleted(true);
-      setResultData(resultData);
-      setLoading(false);
+      updateState({
+        isQuizStarted: false,
+        isQuizCompleted: true,
+        resultData,
+        loading: false
+      });
     }, 2000);
-  };
+  }, [state.username, state.attempt_id, stopVideo, getReport, updateState]);
 
-  const replayQuiz = () => {
-
-    setLoading(true);
-    setLoadingMessage({
-      title: 'Getting ready for round two.',
-      message: "It won't take long!",
+  const replayQuiz = useCallback(() => {
+    updateState({
+      loading: true,
+      loadingMessage: {
+        title: 'Getting ready for round two.',
+        message: "It won't take long!",
+      }
     });
 
-    const shuffledData = shuffle(data);
+    const shuffledData = shuffle(state.data);
     shuffledData.forEach(element => {
       element.options = shuffle(element.options);
     });
 
-    setData(shuffledData);
-
     setTimeout(() => {
-      setIsQuizStarted(true);
-      setIsQuizCompleted(false);
-      setResultData(null);
-      setLoading(false);
+      updateState({
+        data: shuffledData,
+        isQuizStarted: true,
+        isQuizCompleted: false,
+        resultData: null,
+        loading: false
+      });
       startVideo();
     }, 1000);
-  };
+  }, [state.data, startVideo, updateState]);
 
-  const resetQuiz = () => {
-    setLoading(true);
-
-    setLoadingMessage({
-      title: 'Loading the home screen.',
-      message: 'Thank you for playing!',
+  const resetQuiz = useCallback(() => {
+    updateState({
+      loading: true,
+      loadingMessage: {
+        title: 'Loading the home screen.',
+        message: 'Thank you for playing!',
+      }
     });
 
-
     setTimeout(() => {
-      setData(null);
-      setCountdownTime(null);
-      setIsQuizStarted(false);
-      setIsQuizCompleted(false);
-      setResultData(null);
-      setLoading(false);
+      updateState({
+        data: null,
+        countdownTime: null,
+        isQuizStarted: false,
+        isQuizCompleted: false,
+        resultData: null,
+        loading: false
+      });
       startVideo();
     }, 1000);
-  };
+  }, [startVideo, updateState]);
 
+  const authenticateFace = useCallback(() => {
+    updateState({ isFaceRegistered: true });
+  }, [updateState]);
 
-  const authenticateFace = async () => {
-    setIsFaceRegistered(true);
-  }
+  // Load models on mount
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
 
-  const embeddingsPacketArray = [];
-  const timeStapArray = [];
-
+  // Face detection effect
   useEffect(() => {
     let interval;
-    if (videoRef && !loading && isFaceRegistered) {
+    if (state.videoRef && !state.loading && state.isFaceRegistered) {
       interval = setInterval(async () => {
-        const video = document.getElementById("videoInput");
+        try {
+          const video = document.getElementById("videoInput");
+          const detections = await faceapi
+            .detectAllFaces(video)
+            .withFaceLandmarks()
+            .withFaceDescriptors();
 
-        const detections = await faceapi
-          .detectAllFaces(video)
-          .withFaceLandmarks()
-          .withFaceDescriptors();
+          if (detections) {
+            if (detections.length > 1) {
+              embeddingsPacketArray.push("X");
+              timeStapArray.push(new Date().getTime());
+              updateState({ numberOfFaces: detections.length });
+            } else if (detections.length === 1) {
+              embeddingsPacketArray.push(detections[0].descriptor);
+              timeStapArray.push(new Date().getTime());
+              updateState({ numberOfFaces: 1 });
+            } else {
+              embeddingsPacketArray.push(null);
+              timeStapArray.push(new Date().getTime());
+              updateState({ numberOfFaces: 0 });
+            }
 
-        // Check if more than one face is detected
-        if (detections) {
-
-          if (detections.length > 1) {
-            console.log("More than one face detected");
-            embeddingsPacketArray.push("X");
-            timeStapArray.push(new Date().getTime());
-            setNumberOfFaces(detections.length);
-          } else if (detections.length === 1) {
-            console.log("Only one face detected");
-            embeddingsPacketArray.push(detections[0].descriptor);
-            timeStapArray.push(new Date().getTime());
-            setNumberOfFaces(1);
-
-          } else {
-            console.log("No faces detected");
-            embeddingsPacketArray.push(null);
-            timeStapArray.push(new Date().getTime());
-            setNumberOfFaces(0);
+            if (embeddingsPacketArray.length === MAX_EMBEDDINGS) {
+              await submitAttempt(state.username, state.attempt_id, embeddingsPacketArray, timeStapArray);
+              embeddingsPacketArray.length = 0;
+              timeStapArray.length = 0;
+            }
           }
+        } catch (error) {
+          console.error('Error in face detection:', error);
         }
-
-        if (embeddingsPacketArray.length === 5) {
-          submitAttempt(username, attempt_id, embeddingsPacketArray, timeStapArray);
-          embeddingsPacketArray.length = 0;
-          timeStapArray.length = 0;
-        }
-
-      }, 2000);
+      }, DETECTION_INTERVAL);
     }
     return () => clearInterval(interval);
-  }, [videoRef, loading]);
-
-
+  }, [state.videoRef, state.loading, state.isFaceRegistered, state.username, state.attempt_id, submitAttempt, updateState]);
 
   return (
     <Layout>
-      {/* Display Loader while loading */}
-      {loading && <Loader {...loadingMessage} />}
+      {state.loading && <Loader {...state.loadingMessage} />}
 
-      {/* Display Register component if not loading and not registered */}
-      {!loading && !isQuizStarted && !isQuizCompleted && !isFaceRegistered && (
-        <Register authenticateFace={authenticateFace} startVideo={startVideo} videoRef={videoRef} username={username} setUsername={setUsername} />
+      {!state.loading && !state.isQuizStarted && !state.isQuizCompleted && !state.isFaceRegistered && (
+        <Register 
+          authenticateFace={authenticateFace} 
+          startVideo={startVideo} 
+          videoRef={state.videoRef} 
+          username={state.username} 
+          setUsername={(username) => updateState({ username })} 
+        />
       )}
 
-      {/* Display main quiz content if face is registered */}
-      {isFaceRegistered && (
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "row",
-            width: "100vw", // Full viewport width
-            padding: 3,
-          }}
-        >
-          {/* Left section for main content */}
-          <Box sx={{ flex: 1, marginRight: 3, width: "80%" }}>
-            {!loading && !isQuizStarted && !isQuizCompleted && (
-              <Main startQuiz={startQuiz} />
-            )}
-            {!loading && isQuizStarted && (
-              <Quiz data={data} countdownTime={countdownTime} endQuiz={endQuiz} />
-            )}
-          </Box>
+      {state.isFaceRegistered && (
+        <Box sx={{ display: "flex", flexDirection: "row", width: "100vw", padding: 3 }}>
+          <MainContent
+            isQuizStarted={state.isQuizStarted}
+            isQuizCompleted={state.isQuizCompleted}
+            loading={state.loading}
+            data={state.data}
+            countdownTime={state.countdownTime}
+            startQuiz={startQuiz}
+            endQuiz={endQuiz}
+          />
 
-          {!isQuizCompleted && !loading && (
-            <Box
-              sx={{
-                width: "20%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-              }}
-            >
-              <Card
-                sx={{
-                  width: "100%",
-                  borderRadius: 2,
-                  boxShadow: 3,
-                  overflow: "hidden",
-                }}
-              >
-                <CardContent>
-                  <Box sx={{ position: "relative", width: "100%" }}>
-                    <video
-                      id="videoInput"
-                      width="100%"
-                      autoPlay
-                      style={{ borderRadius: 8, objectFit: "cover" }}
-                      ref={(ref) =>
-                        (ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null)}
-                    />
-                  </Box>
-
-                  {/* Display detection status */}
-                  {isQuizStarted ? (numberOfFaces === 0 ? (
-                    <Typography variant="h7" color="error">
-                      Face not detected.
-                    </Typography>
-                  ) : (
-                    numberOfFaces === 1 ? (
-                      <Typography variant="h7" color="success">
-                        Face detected.
-                      </Typography>
-                    ) : (
-                      <Typography variant="h7" color="error">
-                        Multiple face detected, this incident will be reported.
-                      </Typography>
-                    )
-                  )) :
-                    <Typography variant="h7" color="success">
-                    </Typography>}
-                </CardContent>
-              </Card>
-            </Box>
+          {!state.isQuizCompleted && !state.loading && (
+            <VideoFeed
+              videoRef={state.videoRef}
+              numberOfFaces={state.numberOfFaces}
+              isQuizStarted={state.isQuizStarted}
+            />
           )}
         </Box>
       )}
 
-      {/* Display Result component if quiz is completed */}
-      {!loading && isQuizCompleted && (
-        <Result {...resultData} replayQuiz={replayQuiz} resetQuiz={resetQuiz} reportData={reportData} />
+      {!state.loading && state.isQuizCompleted && (
+        <Result 
+          {...state.resultData} 
+          replayQuiz={replayQuiz} 
+          resetQuiz={resetQuiz} 
+          reportData={state.reportData} 
+        />
       )}
     </Layout>
-
   );
 };
 

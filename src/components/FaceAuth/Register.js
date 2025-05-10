@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, FormControlLabel, Tooltip, Alert, Snackbar } from "@mui/material";
 import axios from "axios";
 import * as faceapi from "face-api.js";
 import { URL } from '../../consts';
+
+const EAR_THRESHOLD = 3.7;
+const BLINK_INTERVAL = 200;
 
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
   const [loading, setLoading] = useState(false);
@@ -12,82 +15,110 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
   const [usernameError, setUsernameError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    let isBlinking = false;
-    let interval;
-    if (videoRef && !loading) {
-      interval = setInterval(async () => {
-        const video = document.getElementById("videoInput");
-        const detections = await faceapi.detectSingleFace(video).withFaceLandmarks();
-
-        if (detections) {
-          const leftEye = detections.landmarks.getLeftEye();
-          const rightEye = detections.landmarks.getRightEye();
-
-          // Simple blink detection based on eye landmarks
-          const eyeAspectRatio = (eye) => {
-            const width = Math.hypot(eye[3].x - eye[0].x, eye[3].y - eye[0].y);
-            const height = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y) + Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
-            return width / (height / 2);
-          };
-
-          const leftEAR = eyeAspectRatio(leftEye);
-          const rightEAR = eyeAspectRatio(rightEye);
-          const EAR_THRESHOLD = 3.7; // Threshold for detecting a blink
-
-          if (leftEAR > EAR_THRESHOLD && rightEAR > EAR_THRESHOLD) {
-            if (!isBlinking) {
-              isBlinking = true;
-            }
-          } else {
-            if (isBlinking) {
-              setBlinkCount((blinkCount) => blinkCount + 1);
-              isBlinking = false; // Reset blink status
-            }
-          }
-        }
-      }, 200);
-    }
-    return () => clearInterval(interval);
-  }, [loading, videoRef]);
-
-  // Handle field validations
-  const validateEmail = () => {
+  // Memoized validation functions
+  const validateEmail = useCallback(() => {
     if (!email) {
       setEmailError("Email is required.");
       return false;
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) {
       setEmailError("Enter a valid email address.");
       return false;
     }
     setEmailError("");
     return true;
-  };
+  }, [email]);
 
-  const validateUsername = () => {
+  const validateUsername = useCallback(() => {
     if (!username) {
       setUsernameError("Username is required.");
       return false;
-    } else if (username.length < 3) {
+    }
+    if (username.length < 3) {
       setUsernameError("Username must be at least 3 characters long.");
       return false;
     }
     setUsernameError("");
     return true;
-  };
+  }, [username]);
 
+  // Memoized eye aspect ratio calculation
+  const calculateEyeAspectRatio = useCallback((eye) => {
+    const width = Math.hypot(eye[3].x - eye[0].x, eye[3].y - eye[0].y);
+    const height = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y) + 
+                  Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
+    return width / (height / 2);
+  }, []);
 
-  const hashModelFile = async (filePath, algorithm = 'SHA-256') => {
-    const file = await fetch(process.env.PUBLIC_URL + '/' + filePath); // Load file
-    const buffer = await file.arrayBuffer(); // Read file as ArrayBuffer
-    const hashBuffer = await crypto.subtle.digest(algorithm, buffer); // Use Web Crypto API
-    const hashArray = Array.from(new Uint8Array(hashBuffer)); // Convert to array of bytes
-    const hashHex = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join(''); // Convert to hex
-    // console.log(hashHex);
-    return hashHex;
-  };
+  // Memoized model file hashing
+  const hashModelFile = useCallback(async (filePath, algorithm = 'SHA-256') => {
+    try {
+      const file = await fetch(process.env.PUBLIC_URL + '/' + filePath);
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest(algorithm, buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+    } catch (error) {
+      console.error(`Error hashing model file ${filePath}:`, error);
+      throw error;
+    }
+  }, []);
 
+  // Memoized model hashes
+  const modelHashes = useMemo(() => ({
+    m1: 'models/face_landmark_68_model-shard1',
+    m2: 'models/face_recognition_model-shard1',
+    m3: 'models/face_recognition_model-shard2',
+    m4: 'models/ssd_mobilenetv1_model-shard1',
+    m5: 'models/ssd_mobilenetv1_model-shard2',
+    w1: 'models/face_landmark_68_model-weights_manifest.json',
+    w2: 'models/face_recognition_model-weights_manifest.json',
+    w3: 'models/ssd_mobilenetv1_model-weights_manifest.json'
+  }), []);
+
+  useEffect(() => {
+    let isBlinking = false;
+    let interval;
+
+    const detectBlink = async () => {
+      try {
+        const video = document.getElementById("videoInput");
+        if (!video) return;
+
+        const detections = await faceapi.detectSingleFace(video).withFaceLandmarks();
+        if (!detections) return;
+
+        const leftEye = detections.landmarks.getLeftEye();
+        const rightEye = detections.landmarks.getRightEye();
+
+        const leftEAR = calculateEyeAspectRatio(leftEye);
+        const rightEAR = calculateEyeAspectRatio(rightEye);
+
+        if (leftEAR > EAR_THRESHOLD && rightEAR > EAR_THRESHOLD) {
+          if (!isBlinking) {
+            isBlinking = true;
+          }
+        } else if (isBlinking) {
+          setBlinkCount(prev => prev + 1);
+          isBlinking = false;
+        }
+      } catch (error) {
+        console.error("Error in blink detection:", error);
+      }
+    };
+
+    if (videoRef && !loading) {
+      interval = setInterval(detectBlink, BLINK_INTERVAL);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [loading, videoRef, calculateEyeAspectRatio]);
 
   const handleRegister = async () => {
     if (!validateEmail() || !validateUsername()) return;
@@ -97,41 +128,43 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     }
 
     setLoading(true);
+    setError(null);
+
     try {
       const video = document.getElementById("videoInput");
-      const detections = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+      const detections = await faceapi.detectSingleFace(video)
+        .withFaceLandmarks()
+        .withFaceDescriptor();
       
-      if (detections) {
-        const userEmbedding = detections.descriptor;
-        await axios.post(`${URL}/register`, {
-          username,
-          email,
-          embedding: userEmbedding,
-          hash: {
-            m1: await hashModelFile('models/face_landmark_68_model-shard1'),
-            m2: await hashModelFile('models/face_recognition_model-shard1'),
-            m3: await hashModelFile('models/face_recognition_model-shard2'),
-            m4: await hashModelFile('models/ssd_mobilenetv1_model-shard1'),
-            m5: await hashModelFile('models/ssd_mobilenetv1_model-shard2'),
-            w1: await hashModelFile('models/face_landmark_68_model-weights_manifest.json'),
-            w2: await hashModelFile('models/face_recognition_model-weights_manifest.json'),
-            w3: await hashModelFile('models/ssd_mobilenetv1_model-weights_manifest.json')
-          }
-        })
-
-        authenticateFace(userEmbedding);
+      if (!detections) {
+        throw new Error("No face detected. Please ensure your face is clearly visible.");
       }
+
+      const userEmbedding = detections.descriptor;
+      const hashes = await Promise.all(
+        Object.entries(modelHashes).map(async ([key, path]) => ({
+          [key]: await hashModelFile(path)
+        }))
+      );
+
+      const hashObject = hashes.reduce((acc, curr) => ({ ...acc, ...curr }), {});
+
+      await axios.post(`${URL}/register`, {
+        username,
+        email,
+        embedding: userEmbedding,
+        hash: hashObject
+      });
+
+      authenticateFace(userEmbedding);
     } catch (error) {
-      console.log(error);
-      if (error.response.status === 401) {
-        alert("Username already registered");
-      } else if (error.response.status === 402) {
-        alert("Hash mismatch, please refresh the page to fetch latest models");
-        // clear the local storage
-        // localStorage.clear();
+      console.error("Registration error:", error);
+      if (error.response?.status === 401) {
+        setError("Username already registered");
+      } else if (error.response?.status === 402) {
+        setError("Hash mismatch, please refresh the page to fetch latest models");
       } else {
-        console.error("An error occurred during registration:", error);
-        alert("An error occurred during registration. Please refresh and try again.");
+        setError(error.message || "An error occurred during registration. Please try again.");
       }
     } finally {
       setLoading(false);
