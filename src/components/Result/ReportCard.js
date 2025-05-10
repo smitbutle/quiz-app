@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  Card, CardContent, Typography, Grid, Paper, Box, Divider
+  Card, CardContent, Typography, Grid, Paper, Box, Divider,
+  Dialog, DialogContent, IconButton
 } from '@mui/material';
 import { green, red, grey, orange } from '@mui/material/colors';
+import CloseIcon from '@mui/icons-material/Close';
 import {
   PieChart, Pie, Cell, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer
 } from 'recharts';
@@ -39,6 +41,8 @@ const CustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, inde
 };
 
 const ReportCard = ({ report }) => {
+  const [selectedImage, setSelectedImage] = useState(null);
+
   if (!report) return <Typography variant="h6">No report data available.</Typography>;
 
   const { username, test_id, test_name, details, summary } = report;
@@ -105,6 +109,14 @@ const ReportCard = ({ report }) => {
       );
     }
     return null;
+  };
+
+  const handleAttemptClick = (timestamp) => {
+    const imageKey = `face_auth_${timestamp}`;
+    const imageData = localStorage.getItem(imageKey);
+    if (imageData) {
+      setSelectedImage(imageData);
+    }
   };
 
   return (
@@ -367,8 +379,13 @@ const ReportCard = ({ report }) => {
                   attempt.status === 'Pass' ? green[500] :
                   attempt.status === 'Fail' ? red[500] :
                   grey[500]
-                }`
+                }`,
+                cursor: 'pointer',
+                '&:hover': {
+                  backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                }
               }}
+              onClick={() => handleAttemptClick(attempt.timestamp)}
             >
               <Typography variant="subtitle1">Attempt #{index + 1}</Typography>
               <Typography variant="body2" color="text.secondary">
@@ -396,6 +413,43 @@ const ReportCard = ({ report }) => {
           </Grid>
         ))}
       </Grid>
+
+      {/* Image Modal */}
+      <Dialog
+        open={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent sx={{ position: 'relative', padding: 0 }}>
+          <IconButton
+            onClick={() => setSelectedImage(null)}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+              color: 'white',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              '&:hover': {
+                backgroundColor: 'rgba(0, 0, 0, 0.7)'
+              }
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+          {selectedImage && (
+            <img
+              src={selectedImage}
+              alt="Face Authentication"
+              style={{
+                width: '100%',
+                height: 'auto',
+                display: 'block'
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

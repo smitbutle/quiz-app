@@ -283,7 +283,7 @@ const App = () => {
   // Face detection effect
   useEffect(() => {
     let interval;
-    if (state.videoRef && !state.loading && state.isFaceRegistered) {
+    if (state.videoRef && !state.loading && state.isFaceRegistered)
       interval = setInterval(async () => {
         try {
           const video = document.getElementById("videoInput");
@@ -293,17 +293,29 @@ const App = () => {
             .withFaceDescriptors();
 
           if (detections) {
+            // Capture and store image
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+            const timestamp = new Date().getTime();
+            
+            // Store in localStorage with timestamp as key
+            localStorage.setItem(`face_auth_${timestamp}`, imageData);
+
             if (detections.length > 1) {
               embeddingsPacketArray.push("X");
-              timeStapArray.push(new Date().getTime());
+              timeStapArray.push(timestamp);
               updateState({ numberOfFaces: detections.length });
             } else if (detections.length === 1) {
               embeddingsPacketArray.push(detections[0].descriptor);
-              timeStapArray.push(new Date().getTime());
+              timeStapArray.push(timestamp);
               updateState({ numberOfFaces: 1 });
             } else {
               embeddingsPacketArray.push(null);
-              timeStapArray.push(new Date().getTime());
+              timeStapArray.push(timestamp);
               updateState({ numberOfFaces: 0 });
             }
 
@@ -317,7 +329,6 @@ const App = () => {
           console.error('Error in face detection:', error);
         }
       }, DETECTION_INTERVAL);
-    }
     return () => clearInterval(interval);
   }, [state.videoRef, state.loading, state.isFaceRegistered, state.username, state.attempt_id, submitAttempt, updateState]);
 
