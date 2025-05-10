@@ -1,5 +1,33 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Box, Paper, Typography, TextField, Button, CircularProgress, Checkbox, FormControlLabel, Tooltip, Alert, Snackbar } from "@mui/material";
+import {
+  Box,
+  Paper,
+  Typography,
+  TextField,
+  Button,
+  CircularProgress,
+  Checkbox,
+  FormControlLabel,
+  Tooltip,
+  Alert,
+  Snackbar,
+  Grid,
+  Card,
+  CardContent,
+  Stepper,
+  Step,
+  StepLabel,
+  IconButton,
+  useTheme,
+  alpha
+} from "@mui/material";
+import {
+  Face as FaceIcon,
+  Camera as CameraIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Info as InfoIcon
+} from '@mui/icons-material';
 import axios from "axios";
 import * as faceapi from "face-api.js";
 import { URL } from '../../consts';
@@ -8,6 +36,7 @@ const EAR_THRESHOLD = 3.7;
 const BLINK_INTERVAL = 200;
 
 const Register = ({ authenticateFace, startVideo, videoRef, username, setUsername }) => {
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
   const [email, setEmail] = useState("");
@@ -16,6 +45,10 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
   const [emailError, setEmailError] = useState("");
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [error, setError] = useState(null);
+  const [activeStep, setActiveStep] = useState(0);
+  const [cameraAccess, setCameraAccess] = useState(null); // null: not checked, true: granted, false: denied
+
+  const steps = ['Enter Details', 'Start Camera', 'Face Verification'];
 
   // Memoized validation functions
   const validateEmail = useCallback(() => {
@@ -120,6 +153,18 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     };
   }, [loading, videoRef, calculateEyeAspectRatio]);
 
+  const handleStartVideo = async () => {
+    try {
+      await startVideo();
+      setCameraAccess(true);
+      setActiveStep(2); // Move to face verification when camera starts successfully
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setCameraAccess(false);
+      setError("Camera access denied. Please allow camera access to continue.");
+    }
+  };
+
   const handleRegister = async () => {
     if (!validateEmail() || !validateUsername()) return;
     if (!consent) {
@@ -171,115 +216,292 @@ const Register = ({ authenticateFace, startVideo, videoRef, username, setUsernam
     }
   };
 
-  return (
-    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <Paper sx={{ margin: 6, padding: 4, textAlign: "center", alignItems: "center", border: "1px solid #888888", }}>
+  const getStepContent = (step) => {
+    switch (step) {
+      case 0:
+        return (
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onBlur={validateUsername}
+                error={!!usernameError}
+                helperText={usernameError}
+                variant="outlined"
+                InputProps={{
+                  startAdornment: <FaceIcon sx={{ mr: 1, color: 'primary.main' }} />
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email Address"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={validateEmail}
+                error={!!emailError}
+                helperText={emailError}
+                variant="outlined"
+                InputProps={{
+                  startAdornment: <InfoIcon sx={{ mr: 1, color: 'primary.main' }} />
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography variant="body2" color="text.secondary">
+                    I consent to the use of my face data for authentication purposes.
+                  </Typography>
+                }
+              />
+            </Grid>
+          </Grid>
+        );
+      case 1:
+        return (
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            {cameraAccess === false ? (
+              <>
+                <ErrorIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
+                <Typography variant="h6" color="error" gutterBottom>
+                  Camera Access Denied
+                </Typography>
+                <Typography variant="body1" color="text.secondary" paragraph>
+                  To continue with face registration, you need to allow camera access.
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Please follow these steps:
+                </Typography>
+                <Box sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto', mb: 3 }}>
+                  <Typography variant="body2" component="ol" sx={{ pl: 2 }}>
+                    <li>Click the camera icon in your browser's address bar</li>
+                    <li>Select "Allow" for camera access</li>
+                    <li>Refresh the page</li>
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={handleStartVideo}
+                  startIcon={<CameraIcon />}
+                  sx={{ mt: 2 }}
+                >
+                  Try Again
+                </Button>
+              </>
+            ) : (
+              <>
+                <Typography variant="h6" gutterBottom>
+                  Camera Access Required
+                </Typography>
+                <Typography variant="body1" color="text.secondary" paragraph>
+                  To register your face, we need access to your camera.
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  You'll be prompted to allow camera access. This is necessary for:
+                </Typography>
+                <Box sx={{ textAlign: 'left', maxWidth: 400, mx: 'auto', mb: 3 }}>
+                  <Typography variant="body2" component="ul" sx={{ pl: 2 }}>
+                    <li>Face detection</li>
+                    <li>Liveness detection</li>
+                    <li>Creating your face profile</li>
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={handleStartVideo}
+                  startIcon={<CameraIcon />}
+                  sx={{ mt: 2 }}
+                >
+                  Start Camera
+                </Button>
+              </>
+            )}
+          </Box>
+        );
+      case 2:
+        return (
+          <Box sx={{ textAlign: 'center' }}>
+            <video
+              id="videoInput"
+              width="100%"
+              height="360"
+              autoPlay
+              style={{
+                borderRadius: 8,
+                marginBottom: 2,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}
+              ref={(ref) => ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null}
+            />
+            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+              {blinkCount < 2 ? (
+                <>
+                  <CircularProgress size={20} />
+                  <Typography variant="body1" color="text.secondary">
+                    Blinked {blinkCount}/2 times
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon color="success" />
+                  <Typography variant="body1" color="success.main">
+                    Ready to register!
+                  </Typography>
+                </>
+              )}
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Please blink twice to verify you are a real person
+            </Typography>
+          </Box>
+        );
+      default:
+        return null;
+    }
+  };
 
+  const handleNext = () => {
+    if (activeStep === 0) {
+      if (!validateEmail() || !validateUsername() || !consent) {
+        if (!consent) setOpenSnackbar(true);
+        return;
+      }
+    } else if (activeStep === 1) {
+      if (!videoRef) {
+        setError("Please start the camera first");
+        return;
+      }
+    } else if (activeStep === 2) {
+      if (blinkCount < 2) {
+        setError("Please complete the blink verification");
+        return;
+      }
+      // If blink verification is complete, proceed with registration
+      handleRegister();
+      return;
+    }
+    setActiveStep((prevStep) => prevStep + 1);
+  };
+
+  const handleBack = () => {
+    setActiveStep((prevStep) => prevStep - 1);
+  };
+
+  return (
+    <Box sx={{ 
+      display: "flex", 
+      flexDirection: "column", 
+      alignItems: "center",
+      minHeight: '100vh',
+      py: 4,
+      background: `linear-gradient(45deg, ${alpha(theme.palette.primary.main, 0.05)} 30%, ${alpha(theme.palette.primary.light, 0.05)} 90%)`
+    }}>
+      <Paper 
+        elevation={3}
+        sx={{ 
+          width: '100%',
+          maxWidth: 800,
+          p: 4,
+          borderRadius: 2,
+          background: 'white'
+        }}
+      >
         <Typography
           variant="h4"
           sx={{
             fontWeight: "bold",
             textAlign: "center",
-            marginBottom: 4,
-            paddingBottom: 4,
-            borderBottom: "2px solid #888888",
-            // color: "#1976d2",
+            mb: 4,
+            pb: 2,
+            borderBottom: `2px solid ${theme.palette.divider}`,
+            color: theme.palette.primary.main
           }}
         >
-          Register
+          Face Registration
         </Typography>
 
+        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}>
+          {steps.map((label) => (
+            <Step key={label}>
+              <StepLabel>{label}</StepLabel>
+            </Step>
+          ))}
+        </Stepper>
+
         {loading ? (
-          <CircularProgress sx={{ margin: 3 }} />
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "row", gap: 4 }}>
-            {/* Left side: User info fields */}
-            <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              {/* <Tooltip title="This application requires IndexedDB, Webcam access, and Fullscreen mode.">
-                  <Typography color="textSecondary" sx={{ marginBottom: 2, textAlign: "left" }}>
-                  Requirements:
-                </Typography>
-              </Tooltip> */}
-
-              <Box>
-                <TextField
-                  fullWidth
-                  label="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onBlur={validateUsername}
-                  error={!!usernameError}
-                  helperText={usernameError}
-                  sx={{ marginBottom: 2 }}
-                />
-
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={validateEmail}
-                  error={!!emailError}
-                  helperText={emailError}
-                  sx={{ marginBottom: 2 }}
-                />
-              </Box>
-
-              <Box>
-                <FormControlLabel
-                  control={<Checkbox checked={consent} onChange={(e) => setConsent(e.target.checked)} />}
-                  label="I consent to the use of my face data for authentication purposes."
-                  sx={{ marginBottom: 2, textAlign: "left" }}
-                />
-
-                <Button variant="contained" fullWidth onClick={startVideo} sx={{ marginBottom: 2 }}>
-                  Start Video
-                </Button>
-
-              </Box>
-            </Box>
-
-            {/* Right side: Video and blink detection */}
-            <Box sx={{ flex: 1, textAlign: "center" }}>
-              <video
-                id="videoInput"
-                width="100%"
-                height="360"
-                autoPlay
-                style={{ borderRadius: 8, marginBottom: 2 }}
-                ref={(ref) => ref && ref.srcObject !== videoRef ? (ref.srcObject = videoRef) : null}
-              />
-
-              <Typography variant="body1" sx={{ marginBottom: 2 }}>
-                {blinkCount < 2 ? `Blinked ${blinkCount}/2 times` : "Ready to register!"}
-              </Typography>
-
-              <Button
-                variant="contained"
-                fullWidth
-                onClick={handleRegister}
-                disabled={blinkCount < 2 || !consent || !!usernameError || !!emailError}
-                sx={{
-                  backgroundColor: blinkCount >= 2 && consent && !usernameError && !emailError ? "#1976d2" : "#9e9e9e",
-                  color: "#fff",
-                  marginBottom: 2
-                }}
-              >
-                {blinkCount < 2 ? "Waiting for blinks..." : "Register"}
-              </Button>
-            </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <CircularProgress />
           </Box>
+        ) : (
+          <>
+            {getStepContent(activeStep)}
+
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+              <Button
+                disabled={activeStep === 0}
+                onClick={handleBack}
+                variant="outlined"
+              >
+                Back
+              </Button>
+              {activeStep === steps.length - 1 ? (
+                <Button
+                  variant="contained"
+                  onClick={handleRegister}
+                  disabled={loading || blinkCount < 2}
+                  startIcon={loading ? <CircularProgress size={20} /> : <CheckCircleIcon />}
+                >
+                  Register
+                </Button>
+              ) : (
+                <Button
+                  variant="contained"
+                  onClick={handleNext}
+                  disabled={activeStep === 1 && !videoRef}
+                >
+                  Next
+                </Button>
+              )}
+            </Box>
+          </>
         )}
 
-        {/* Snackbar alert for missing consent */}
+        {error && (
+          <Alert 
+            severity="error" 
+            sx={{ mt: 2 }}
+            onClose={() => setError(null)}
+          >
+            {error}
+          </Alert>
+        )}
+
         <Snackbar
           open={openSnackbar}
           autoHideDuration={3000}
           onClose={() => setOpenSnackbar(false)}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-          <Alert onClose={() => setOpenSnackbar(false)} severity="warning" sx={{ width: '100%' }}>
+          <Alert 
+            onClose={() => setOpenSnackbar(false)} 
+            severity="warning" 
+            sx={{ width: '100%' }}
+          >
             You must consent to use face data for registration.
           </Alert>
         </Snackbar>
